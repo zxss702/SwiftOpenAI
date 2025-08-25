@@ -82,9 +82,9 @@ public struct SYToolMacro: ExtensionMacro {
         }
         
         // 生成ChatCompletionToolParam转换方法
-        let extensionDecl = try ExtensionDeclSyntax("extension \(type.trimmed): OpenAIToolConvertible") {
+        let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): OpenAIToolConvertible") {
             """
-            public nonisolated var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
+            public var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
                 let paramsDict: [String: Any]
                 
                 \(raw: parametersTypeName != nil ? 
@@ -116,6 +116,8 @@ public struct SYToolMacro: ExtensionMacro {
         return [extensionDecl]
     }
 }
+
+
 
 // MARK: - SYToolArgs Macro
 enum SYToolArgsMacroDiagnostic: String, DiagnosticMessage {
@@ -170,9 +172,9 @@ public struct SYToolArgsMacro: ExtensionMacro {
         
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
-        let extensionDecl = try ExtensionDeclSyntax("extension \(type.trimmed): SYToolArgsConvertible") {
+        let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
-            \(structDecl.modifiers)static var parametersSchema: [String: Any] {
+            public static var parametersSchema: [String: Any] {
                 return [
                     "type": "object",
                     "properties": [\(raw: propertiesString)],

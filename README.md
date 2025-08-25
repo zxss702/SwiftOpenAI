@@ -23,6 +23,7 @@
 - ✅ **自定义端点** - 支持任意 OpenAI 兼容 API（如 SiliconFlow）
 - ✅ **便捷 API** - 一行代码创建消息和对话
 - ✅ **错误处理** - 完整的错误类型和本地化
+- ✅ **Swift 6 兼容** - 完全支持 Swift 6 的 Main actor 隔离规则
 
 ## 📦 安装
 
@@ -570,6 +571,47 @@ SwiftOpenAI 与以下服务兼容：
 - macOS 14.0+
 - Swift 5.9+
 - Xcode 15.0+
+
+## 🛡️ Swift 6 兼容性
+
+SwiftOpenAI 完全兼容 Swift 6 的 Main actor 隔离规则。在 Swift 6 中，所有工具结构体都自动标记为 `nonisolated`，确保可以在非隔离上下文中使用。
+
+### 问题解决
+
+**问题**: 在 Swift 6 中，使用 `@SYTool` 宏定义的工具结构体会产生以下错误：
+```
+Main actor-isolated conformance of 'ForewordTool' to 'OpenAIToolConvertible' cannot be used in caller isolation inheriting-isolated context; this is an error in the Swift 6 language mode
+```
+
+**解决方案**: SwiftOpenAI 现在自动生成 `nonisolated` 扩展，确保工具可以在任何上下文中使用：
+
+```swift
+// ✅ 现在可以正常工作，不会产生 Main actor 隔离错误
+@SYTool
+struct forewordTool {
+    let name: String = "前言"
+    let description: String = "向用户说明你下一步的计划。不应该超过两句话。"
+    let parameters = 前言.self
+}
+
+// ✅ 可以在非隔离上下文中使用
+let tools: [any OpenAIToolConvertible] = [forewordTool()]
+let result = try await sendMessage(
+    modelInfo: modelInfo,
+    messages: messages,
+    tools: tools,  // 不会产生 Main actor 隔离错误
+    temperature: 0.7
+) { streamResult in
+    print("💬 AI回复: \(streamResult.subText)")
+}
+```
+
+### 技术细节
+
+- 所有 `@SYTool` 宏生成的扩展都标记为 `nonisolated`
+- 所有 `@SYToolArgs` 宏生成的扩展都标记为 `nonisolated`
+- 工具结构体可以在任何上下文中安全使用
+- 完全向后兼容，不影响现有代码
 
 ## 🤝 贡献
 

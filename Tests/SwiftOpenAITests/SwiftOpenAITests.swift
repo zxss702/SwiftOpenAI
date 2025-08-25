@@ -9,9 +9,9 @@ struct TestToolArgs {
 }
 
 @SYTool
-struct TestTool {
-    let name: String = "test_tool"
-    let description: String = "测试工具"
+struct BasicTestTool {
+    let name: String = "basic_test_tool"
+    let description: String = "基础测试工具"
     let parameters = TestToolArgs.self
 }
 
@@ -142,16 +142,16 @@ final class SwiftOpenAITests: XCTestCase {
     }
     
     func testToolDefinition() {
-        let tool = TestTool()
+        let tool = BasicTestTool()
         
-        XCTAssertEqual(tool.name, "test_tool")
-        XCTAssertEqual(tool.description, "测试工具")
+        XCTAssertEqual(tool.name, "basic_test_tool")
+        XCTAssertEqual(tool.description, "基础测试工具")
         
         // 测试工具转换为ChatCompletionToolParam
         let chatTool = tool.asChatCompletionTool
         XCTAssertEqual(chatTool.type, "function")
-        XCTAssertEqual(chatTool.function.name, "test_tool")
-        XCTAssertEqual(chatTool.function.description, "测试工具")
+        XCTAssertEqual(chatTool.function.name, "basic_test_tool")
+        XCTAssertEqual(chatTool.function.description, "基础测试工具")
         XCTAssertNotNil(chatTool.function.parameters)
     }
     
