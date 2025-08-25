@@ -51,7 +51,20 @@ public struct SYToolMacro: ExtensionMacro {
                     hasDescription = true
                 case "parameters":
                     hasParameters = true
-                    if let typeAnnotation = binding.typeAnnotation {
+                    // 支持三种形式：
+                    // 1. let parameters = TypeName.self
+                    // 2. let parameters: TypeName
+                    // 3. let parameters: TypeName = TypeName(...)
+                    
+                    // 优先检查 TypeName.self 形式
+                    if let initializer = binding.initializer,
+                       let memberAccess = initializer.value.as(MemberAccessExprSyntax.self),
+                       memberAccess.declName.baseName.text == "self",
+                       let baseExpr = memberAccess.base {
+                        parametersTypeName = baseExpr.trimmedDescription
+                    }
+                    // 如果没有找到 .self 形式，使用类型注解
+                    else if let typeAnnotation = binding.typeAnnotation {
                         parametersTypeName = typeAnnotation.type.trimmedDescription
                     }
                 default:
