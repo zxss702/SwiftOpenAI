@@ -34,7 +34,6 @@ public struct SYToolMacro: ExtensionMacro {
         // 验证必需的属性
         var hasName = false
         var hasDescription = false
-        var hasParameters = false
         var parametersTypeName: String?
         
         for member in structDecl.memberBlock.members {
@@ -50,22 +49,15 @@ public struct SYToolMacro: ExtensionMacro {
                 case "description":
                     hasDescription = true
                 case "parameters":
-                    hasParameters = true
-                    // 支持三种形式：
-                    // 1. let parameters = TypeName.self
-                    // 2. let parameters: TypeName
-                    // 3. let parameters: TypeName = TypeName(...)
+                    // 支持的参数定义形式：
+                    // let parameters = TypeName.self
                     
-                    // 优先检查 TypeName.self 形式
+                    // 仅支持 TypeName.self 形式
                     if let initializer = binding.initializer,
                        let memberAccess = initializer.value.as(MemberAccessExprSyntax.self),
                        memberAccess.declName.baseName.text == "self",
                        let baseExpr = memberAccess.base {
                         parametersTypeName = baseExpr.trimmedDescription
-                    }
-                    // 如果没有找到 .self 形式，使用类型注解
-                    else if let typeAnnotation = binding.typeAnnotation {
-                        parametersTypeName = typeAnnotation.type.trimmedDescription
                     }
                 default:
                     break
@@ -83,13 +75,9 @@ public struct SYToolMacro: ExtensionMacro {
                 Diagnostic(node: node, message: SYToolMacroDiagnostic.missingDescriptionProperty))
         }
         
-        if !hasParameters {
-            context.diagnose(
-                Diagnostic(node: node, message: SYToolMacroDiagnostic.missingParametersProperty))
-        }
+        // parameters 是可选的，工具可以没有参数
         
-        guard hasName && hasDescription && hasParameters,
-              let parametersType = parametersTypeName else {
+        guard hasName && hasDescription else {
             return []
         }
         
@@ -97,15 +85,28 @@ public struct SYToolMacro: ExtensionMacro {
         let extensionDecl = try ExtensionDeclSyntax("extension \(type.trimmed): OpenAIToolConvertible") {
             """
             \(structDecl.modifiers)var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
-                let paramsData = try? JSONSerialization.data(withJSONObject: \(raw: parametersType).parametersSchema, options: [])
-                let paramsString = paramsData.flatMap { String(data: $0, encoding: .utf8) }
+                let paramsDict: [String: Any]
                 
+                \(raw: parametersTypeName != nil ? 
+                    "paramsDict = \(parametersTypeName!).parametersSchema" :
+                    """
+                    // 无参数时使用空的对象schema
+                    paramsDict = [
+                        "type": "object",
+                        "properties": [:],
+                        "required": [],
+                        "additionalProperties": false
+                    ]
+                    """
+                )
+                
+                // 直接传递字典对象，而不是JSON字符串
                 return SwiftOpenAI.ChatQuery.ChatCompletionToolParam(
                     type: "function",
                     function: SwiftOpenAI.ChatQuery.ChatCompletionToolParam.Function(
                         name: self.name,
                         description: self.description,
-                        parameters: paramsString
+                        parameters: paramsDict  // 使用字典而不是字符串
                     )
                 )
             }

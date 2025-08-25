@@ -150,7 +150,7 @@ struct WeatherArgs {
 struct WeatherTool {
     let name: String = "get_weather"
     let description: String = "获取天气信息"
-    let parameters: WeatherArgs = WeatherArgs(location: "", unit: nil)
+    let parameters = WeatherArgs.self
 }
 
 let tools = [WeatherTool().asChatCompletionTool]

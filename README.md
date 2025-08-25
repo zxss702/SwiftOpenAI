@@ -12,6 +12,7 @@
 - ✅ **工具调用** - 完整支持 Function Calling 和并行工具调用
 - ✅ **多模态** - 支持文本、图像混合输入
 - ✅ **Swift 宏** - 使用 `@SYTool`、`@SYToolArgs`、`@AIModelSchema` 自动生成代码
+  - 🆕 **简洁参数定义** - 使用 `= TypeName.self` 语法，简洁优雅
 - ✅ **类型安全** - 完整的 Swift 类型系统支持
 - ✅ **async/await** - 现代异步编程
 
@@ -30,7 +31,7 @@
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-repo/SwiftOpenAI.git", from: "1.0.0")
+    .package(url: "https://github.com/zxss702/SwiftOpenAI.git", from: "1.0.0")
 ]
 ```
 
@@ -82,6 +83,39 @@ let messages = Array<OpenAIMessage>.conversation(
 
 ## 🛠 工具调用（Function Calling）
 
+### 参数定义语法
+
+使用 `@SYTool` 宏定义工具参数的推荐语法：
+
+```swift
+@SYTool
+struct MyTool {
+    let name = "my_tool"
+    let description = "工具描述"
+    
+    // 使用 .self 语法定义参数类型（推荐）
+    let parameters = MyArgs.self
+}
+```
+
+#### 具体示例
+
+```swift
+// 中文工具定义示例
+@SYTool
+struct forewordTool {
+    let name: String = "前言"
+    let description: String = "向用户说明你下一步的计划。不应该超过两句话。"
+    let parameters = 前言.self  // 🎯 支持中文类型名！
+}
+
+@SYToolArgs
+struct 前言 {
+    /// 你想说的话。
+    let 内容: String
+}
+```
+
 ### 定义工具
 
 使用 Swift 宏轻松定义工具：
@@ -98,12 +132,12 @@ struct WeatherArgs {
     let includeForecast: Bool
 }
 
-// 2. 定义工具
+// 2. 定义工具 - 使用 .self 语法
 @SYTool
 struct WeatherTool {
     let name = "get_weather"
     let description = "获取指定城市的天气信息"
-    let parameters = WeatherArgs(location: "", unit: nil, includeForecast: false)
+    let parameters = WeatherArgs.self
 }
 
 // 3. 定义返回数据结构（自动生成 JSON Schema）
@@ -368,7 +402,7 @@ class CalculatorAssistant {
     struct CalculatorTool {
         let name = "calculator"
         let description = "执行基本数学运算"
-        let parameters = CalculatorArgs(operation: "", a: 0, b: 0)
+        let parameters = CalculatorArgs.self  // 使用推荐的 .self 形式
     }
     
     @AIModelSchema

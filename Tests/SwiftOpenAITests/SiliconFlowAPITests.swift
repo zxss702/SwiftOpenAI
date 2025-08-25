@@ -18,7 +18,7 @@ public struct WeatherQueryArgs {
 public struct WeatherQueryTool {
     let name = "get_weather"
     let description = "获取指定城市的天气信息"
-    let parameters: WeatherQueryArgs = WeatherQueryArgs(city: "", country: nil)
+    let parameters = WeatherQueryArgs.self
 }
 
 /// API响应结构
@@ -165,20 +165,17 @@ final class SiliconFlowAPITests: XCTestCase {
         XCTAssertEqual(tool?.function.description, "获取指定城市的天气信息")
         XCTAssertNotNil(tool?.function.parameters)
         
-        // 验证工具参数是有效的JSON
-        if let paramsString = tool?.function.parameters,
-           let paramsData = paramsString.data(using: String.Encoding.utf8) {
-            XCTAssertNoThrow(try JSONSerialization.jsonObject(with: paramsData))
-            
-            let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any]
+        // 验证工具参数是有效的字典
+        if let paramsContainer = tool?.function.parameters {
+            let paramsDict = paramsContainer.toDictionary()
             XCTAssertNotNil(paramsDict)
             
-            let properties = paramsDict?["properties"] as? [String: Any]
+            let properties = paramsDict["properties"] as? [String: Any]
             XCTAssertNotNil(properties?["city"])
             XCTAssertNotNil(properties?["country"])
             
             print("Tool parameters JSON:")
-            print(paramsString)
+            print(paramsContainer.toJSONString() ?? "无法转换为JSON")
         }
     }
     

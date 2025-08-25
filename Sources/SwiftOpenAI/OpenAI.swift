@@ -18,9 +18,21 @@ public class OpenAI {
                     
                     let (bytes, response) = try await urlSession.bytes(for: request)
                     
-                    guard let httpResponse = response as? HTTPURLResponse,
+                    let httpResponse = response as? HTTPURLResponse
+                    guard let httpResponse = httpResponse,
                           200...299 ~= httpResponse.statusCode else {
-                        throw OpenAIError.invalidResponse
+                        // 读取响应内容用于调试
+                        var responseBody = ""
+                        do {
+                            for try await line in bytes.lines {
+                                responseBody += line + "\n"
+                            }
+                        } catch {
+                            responseBody = "无法读取响应内容: \(error)"
+                        }
+                        
+                        let statusCode = httpResponse?.statusCode ?? -1
+                        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
                     }
                     
                     for try await line in bytes.lines {
@@ -59,9 +71,13 @@ public class OpenAI {
         
         let (data, response) = try await urlSession.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
+        let httpResponse = response as? HTTPURLResponse
+        guard let httpResponse = httpResponse,
               200...299 ~= httpResponse.statusCode else {
-            throw OpenAIError.invalidResponse
+            // 包含响应内容用于调试
+            let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+            let statusCode = httpResponse?.statusCode ?? -1
+            throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
         }
         
         do {

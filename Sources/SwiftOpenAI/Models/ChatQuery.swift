@@ -237,12 +237,49 @@ public struct ChatQuery: Codable {
         public struct Function: Codable {
             public let name: String
             public let description: String?
-            public let parameters: String?  // 简化为字符串，避免复杂的编码
+            public let parameters: ParametersContainer?  // 使用包装器类型
             
-            public init(name: String, description: String? = nil, parameters: String? = nil) {
+            public init(name: String, description: String? = nil, parameters: [String: Any]? = nil) {
                 self.name = name
                 self.description = description
-                self.parameters = parameters
+                self.parameters = parameters.map { ParametersContainer($0) }
+            }
+            
+            // 包装器类型来处理 [String: Any]
+            public struct ParametersContainer: Codable, CustomStringConvertible {
+                private let data: [String: AnyCodableValue]
+                
+                public init(_ dict: [String: Any]) {
+                    self.data = dict.mapValues { AnyCodableValue.from($0) }
+                }
+                
+                public func encode(to encoder: Encoder) throws {
+                    try data.encode(to: encoder)
+                }
+                
+                public init(from decoder: Decoder) throws {
+                    data = try [String: AnyCodableValue](from: decoder)
+                }
+                
+                public func toDictionary() -> [String: Any] {
+                    return data.mapValues { $0.anyValue }
+                }
+                
+                // 为测试提供便利方法
+                public func toJSONString() -> String? {
+                    do {
+                        let dict = toDictionary()
+                        let jsonData = try JSONSerialization.data(withJSONObject: dict, options: [])
+                        return String(data: jsonData, encoding: .utf8)
+                    } catch {
+                        return nil
+                    }
+                }
+                
+                // CustomStringConvertible 实现
+                public var description: String {
+                    return toJSONString() ?? "{}"
+                }
             }
         }
     }
@@ -312,6 +349,45 @@ public enum AnyCodableValue: Codable {
     case object([String: AnyCodableValue])
     case null
     
+    // 从Any创建AnyCodableValue
+    public static func from(_ value: Any) -> AnyCodableValue {
+        if let string = value as? String {
+            return .string(string)
+        } else if let int = value as? Int {
+            return .int(int)
+        } else if let double = value as? Double {
+            return .double(double)
+        } else if let bool = value as? Bool {
+            return .bool(bool)
+        } else if let array = value as? [Any] {
+            return .array(array.map { AnyCodableValue.from($0) })
+        } else if let dict = value as? [String: Any] {
+            return .object(dict.mapValues { AnyCodableValue.from($0) })
+        } else {
+            return .null
+        }
+    }
+    
+    // 转换回Any
+    public var anyValue: Any {
+        switch self {
+        case .string(let string):
+            return string
+        case .int(let int):
+            return int
+        case .double(let double):
+            return double
+        case .bool(let bool):
+            return bool
+        case .array(let array):
+            return array.map { $0.anyValue }
+        case .object(let dict):
+            return dict.mapValues { $0.anyValue }
+        case .null:
+            return NSNull()
+        }
+    }
+    
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         
@@ -355,23 +431,5 @@ public enum AnyCodableValue: Codable {
         }
     }
     
-    /// 将值转换为 [String: Any] 格式，用于与现有的 extra_body 兼容
-    public var anyValue: Any {
-        switch self {
-        case .string(let string):
-            return string
-        case .int(let int):
-            return int
-        case .double(let double):
-            return double
-        case .bool(let bool):
-            return bool
-        case .array(let array):
-            return array.map { $0.anyValue }
-        case .object(let object):
-            return object.mapValues { $0.anyValue }
-        case .null:
-            return NSNull()
-        }
-    }
+    // 删除重复的anyValue方法，已经在上面定义过了
 }

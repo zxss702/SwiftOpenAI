@@ -33,12 +33,7 @@ public struct ToolConfig {
 public struct AdvancedCalculatorTool {
     let name = "advanced_calculator"
     let description = "执行高级数学计算，支持多种操作和配置"
-    let parameters: ComplexToolArgs = ComplexToolArgs(
-        operation: "",
-        numbers: [],
-        config: nil,
-        verbose: false
-    )
+    let parameters = ComplexToolArgs.self
 }
 
 /// 任务结构体，用于测试嵌套数组
@@ -227,10 +222,11 @@ final class ExtendedFeaturesTests: XCTestCase {
         XCTAssertEqual(chatTool.function.description, "执行高级数学计算，支持多种操作和配置")
         XCTAssertNotNil(chatTool.function.parameters)
         
-        // 验证参数是有效的JSON字符串
-        if let paramsString = chatTool.function.parameters,
-           let paramsData = paramsString.data(using: .utf8) {
-            XCTAssertNoThrow(try JSONSerialization.jsonObject(with: paramsData))
+        // 验证参数是有效的字典
+        if let paramsContainer = chatTool.function.parameters {
+            let paramsDict = paramsContainer.toDictionary()
+            XCTAssertNotNil(paramsDict)
+            XCTAssertTrue(!paramsDict.isEmpty)
         }
     }
     
@@ -407,7 +403,7 @@ final class ExtendedFeaturesTests: XCTestCase {
         let streamingError = OpenAIError.streamingError("连接中断")
         XCTAssertTrue(streamingError.errorDescription!.contains("连接中断"))
         
-        let invalidResponseError = OpenAIError.invalidResponse
+        let invalidResponseError = OpenAIError.invalidResponse("测试错误")
         XCTAssertNotNil(invalidResponseError.errorDescription)
     }
     

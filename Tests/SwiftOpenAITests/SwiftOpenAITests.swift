@@ -12,7 +12,7 @@ struct TestToolArgs {
 struct TestTool {
     let name: String = "test_tool"
     let description: String = "测试工具"
-    let parameters: TestToolArgs = TestToolArgs(message: "", count: nil)
+    let parameters = TestToolArgs.self
 }
 
 @AIModelSchema
@@ -247,7 +247,7 @@ final class SwiftOpenAITests: XCTestCase {
             .networkError(URLError(.badURL)),
             .decodingError(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "test"))),
             .streamingError("test error"),
-            .invalidResponse
+            .invalidResponse("测试错误响应")
         ]
         
         XCTAssertEqual(errors.count, 7)

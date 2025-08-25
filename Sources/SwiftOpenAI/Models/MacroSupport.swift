@@ -20,25 +20,14 @@ extension ChatQuery.ChatCompletionToolParam {
         let description = functionDict["description"] as? String
         let parameters = functionDict["parameters"] as? [String: Any]
         
-        // 将字典转换为JSON字符串
-        let parametersString: String?
-        if let params = parameters, !params.isEmpty {
-            if let jsonData = try? JSONSerialization.data(withJSONObject: params, options: []),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                parametersString = jsonString
-            } else {
-                parametersString = nil
-            }
-        } else {
-            parametersString = nil
-        }
+        // 直接使用字典，无需转换
         
         return ChatQuery.ChatCompletionToolParam(
             type: type,
             function: ChatQuery.ChatCompletionToolParam.Function(
                 name: name,
                 description: description,
-                parameters: parametersString
+                parameters: parameters  // 直接使用字典
             )
         )
     }

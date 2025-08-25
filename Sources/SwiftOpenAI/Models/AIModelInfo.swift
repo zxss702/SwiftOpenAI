@@ -44,7 +44,7 @@ public enum OpenAIError: Error, LocalizedError {
     case networkError(Error)
     case decodingError(Error)
     case streamingError(String)
-    case invalidResponse
+    case invalidResponse(String)
     
     public var errorDescription: String? {
         switch self {
@@ -60,8 +60,8 @@ public enum OpenAIError: Error, LocalizedError {
             return "解码错误: \(error.localizedDescription)"
         case .streamingError(let message):
             return "流式传输错误: \(message)"
-        case .invalidResponse:
-            return "无效的响应"
+        case .invalidResponse(let message):
+            return "无效的响应: \(message)"
         }
     }
 }

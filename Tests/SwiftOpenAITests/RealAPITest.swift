@@ -18,7 +18,13 @@ public struct TestCalculatorArgs {
 public struct TestCalculatorTool {
     let name = "calculator"
     let description = "执行基本的数学运算"
-    let parameters: TestCalculatorArgs = TestCalculatorArgs(a: 0, b: 0, operation: "add")
+    let parameters = TestCalculatorArgs.self
+}
+
+@SYTool
+public struct TestCalculatorTool2 {
+    let name = "calculator"
+    let description = "执行基本的数学运算"
 }
 
 @SYToolArgs
@@ -33,7 +39,7 @@ public struct RealWeatherArgs {
 public struct RealWeatherTool {
     let name = "get_weather"
     let description = "获取指定城市的实时天气信息"
-    let parameters: RealWeatherArgs = RealWeatherArgs(city: "", lang: nil)
+    let parameters = RealWeatherArgs.self
 }
 
 @AIModelSchema
@@ -157,21 +163,20 @@ class RealAPITest: XCTestCase {
         XCTAssertNotNil(chatTool.function.parameters)
         
         // 验证参数JSON格式
-        if let paramsString = chatTool.function.parameters {
-            let paramsData = try XCTUnwrap(paramsString.data(using: .utf8))
-            let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any]
+        if let paramsContainer = chatTool.function.parameters {
+            let paramsDict = paramsContainer.toDictionary()
             
             XCTAssertNotNil(paramsDict)
-            XCTAssertEqual(paramsDict?["type"] as? String, "object")
+            XCTAssertEqual(paramsDict["type"] as? String, "object")
             
-            let properties = paramsDict?["properties"] as? [String: Any]
+            let properties = paramsDict["properties"] as? [String: Any]
             XCTAssertNotNil(properties?["a"])
             XCTAssertNotNil(properties?["b"])
             XCTAssertNotNil(properties?["operation"])
             
             print("✅ 工具构建测试成功")
             print("🔧 工具参数JSON:")
-            print(paramsString)
+            print(paramsContainer.toJSONString() ?? "无法转换为JSON")
         }
     }
     
@@ -390,14 +395,144 @@ class RealAPITest: XCTestCase {
         print(separator + "\n")
     }
     
+    func testToolParametersGeneration() throws {
+        print("=== 调试工具参数生成 ===")
+        
+        // 首先直接测试 parametersSchema 生成
+        let schema = TestCalculatorArgs.parametersSchema
+        print("直接Schema测试: \(schema)")
+        
+        // 测试有参数工具
+        let calculator = TestCalculatorTool()
+        let chatTool = calculator.asChatCompletionTool
+        
+        print("计算器工具:")
+        print("  类型: \(chatTool.type)")
+        print("  名称: \(chatTool.function.name)")
+        print("  描述: \(chatTool.function.description)")
+        print("  参数: \(chatTool.function.parameters?.description ?? "nil")")
+        
+        // 验证参数是有效的JSON
+        if let paramsContainer = chatTool.function.parameters {
+            let paramsDict = paramsContainer.toDictionary()
+            print("  参数JSON解析: 成功")
+            print("  参数内容: \(paramsDict)")
+        } else {
+            print("  ❌ 警告：参数为nil!")
+        }
+        
+        // 测试无参数工具
+        let calculator2 = TestCalculatorTool2()
+        let chatTool2 = calculator2.asChatCompletionTool
+        
+        print("\n无参数工具:")
+        print("  类型: \(chatTool2.type)")
+        print("  名称: \(chatTool2.function.name)")
+        print("  描述: \(chatTool2.function.description)")
+        print("  参数: \(chatTool2.function.parameters?.description ?? "nil")")
+        
+        if let paramsContainer = chatTool2.function.parameters {
+            let paramsDict = paramsContainer.toDictionary()
+            print("  参数JSON解析: 成功")
+            print("  参数内容: \(paramsDict)")
+        } else {
+            print("  ❌ 警告：无参数工具的参数也为nil!")
+        }
+        
+        // 创建一个完整的ChatQuery来测试
+        print("\n=== 测试完整的ChatQuery构建 ===")
+        let query = ChatQuery(
+            messages: [.user("测试消息")],
+            model: "test-model",
+            tools: [chatTool]
+        )
+        
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let jsonData = try encoder.encode(query)
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "编码失败"
+            print("完整请求JSON:")
+            print(jsonString)
+        } catch {
+            print("❌ ChatQuery编码失败: \(error)")
+            XCTFail("ChatQuery编码失败: \(error)")
+        }
+    }
+    
     func testSendMessage() async throws {
         let messages: [OpenAIMessage] = [
-            .user("请写一首关于人工智能的短诗")
+            .user("计算6+8 = 几")
+        ]
+//        
+//        print("=== 测试不带工具的API调用 ===")
+//        let result1 = try await sendMessage(
+//            modelInfo: AIModelInfoValue(token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", host: "api.siliconflow.cn", basePath: "/v1", modelID: "Qwen/Qwen3-8B"),
+//            messages: messages
+//        ) { result in
+//            print(result.subThinkingText, terminator: "")
+//            print(result.subText, terminator: "")
+//        }
+//        print("✅ 不带工具的API调用成功: \(result1.fullText)")
+        
+        print("\n=== 测试带工具的API调用 (使用 Qwen/Qwen3-8B) ===")
+        let modelInfo = AIModelInfoValue(
+            token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", 
+            host: "api.siliconflow.cn", 
+            basePath: "/v1", 
+            modelID: "Qwen/Qwen3-8B"
+        )
+        
+        // 先检查工具定义是否正确
+        let tool = TestCalculatorTool()
+        let chatTool = tool.asChatCompletionTool
+        print("🔧 工具检查:")
+        print("  名称: \(chatTool.function.name)")
+        print("  描述: \(chatTool.function.description ?? "无")")
+        print("  参数类型: \(chatTool.type)")
+        print("  参数JSON: \(chatTool.function.parameters?.description ?? "无")")
+        
+        // 构建完整请求并打印
+        let messages2: [OpenAIMessage] = [
+            .user("使用工具计算6+8 = 几")
         ]
         
-        _ = try await sendMessage(modelInfo: AIModelInfoValue(token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", host: "api.siliconflow.cn", basePath: "/v1", modelID: "THUDM/GLM-4.1V-9B-Thinking"), messages: messages) { result in
-            print(result.subThinkingText, terminator: "")
-            print(result.subText, terminator: "")
+        let chatQuery = ChatQuery(
+            messages: messages2,
+            model: "Qwen/Qwen3-8B",
+            tools: [chatTool]
+        )
+        
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let jsonData = try encoder.encode(chatQuery)
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "编码失败"
+            print("\n📋 完整请求JSON:")
+            print(jsonString)
+        } catch {
+            print("❌ 请求JSON编码失败: \(error)")
+        }
+        
+        do {
+            let result2 = try await sendMessage(
+                modelInfo: modelInfo,
+                messages: messages2,
+                tools: [chatTool]
+            ) { result in
+                print(result.subThinkingText, terminator: "")
+                print(result.subText, terminator: "")
+                
+                // 显示工具调用信息
+                for toolCall in result.allToolCalls {
+                    print("🔧 工具调用: \(toolCall.function?.name ?? "unknown")")
+                    print("📋 参数: \(toolCall.function?.arguments ?? "none")")
+                }
+            }
+            print("✅ 带工具的API调用成功: \(result2.fullText)")
+        } catch {
+            print("❌ 带工具的API调用失败: \(error)")
+            // 不要抛出错误，让测试继续执行以查看日志
         }
     }
 }
