@@ -195,7 +195,7 @@ class RealAPITest: XCTestCase {
             maxCompletionTokens: 300,
             parallelToolCalls: true,
             temperature: 0.8,
-            tools: [weatherTool.asChatCompletionTool]
+            tools: [weatherTool.asChatCompletionTool]  // 注意：ChatQuery构造器仍需转换后的工具
         )
         
         XCTAssertEqual(query.messages.count, 2)
@@ -212,16 +212,16 @@ class RealAPITest: XCTestCase {
         let jsonString = String(data: jsonData, encoding: .utf8)!
         
         // 验证JSON包含必要字段
-        let jsonObject = try JSONSerialization.jsonObject(with: jsonString.data(using: .utf8)!) as? [String: Any]
+        let jsonObject = try JSONSerialization.jsonObject(with: jsonString.data(using: String.Encoding.utf8)!) as? [String: Any]
         XCTAssertNotNil(jsonObject)
-        XCTAssertEqual(jsonObject?["parallelToolCalls"] as? Bool, true)
+        XCTAssertEqual((jsonObject?["parallelToolCalls"] as? Bool), true)
         
         let tools = jsonObject?["tools"] as? [[String: Any]]
         XCTAssertNotNil(tools)
         XCTAssertEqual(tools?.count, 1)
         
         let function = (tools?.first?["function"] as? [String: Any])
-        XCTAssertEqual(function?["name"] as? String, "get_weather")
+        XCTAssertEqual((function?["name"] as? String), "get_weather")
         
         print("✅ 复杂查询构建测试成功")
         print("🌤️ 天气查询JSON:")
@@ -461,9 +461,9 @@ class RealAPITest: XCTestCase {
     }
     
     func testSendMessage() async throws {
-        let messages: [OpenAIMessage] = [
-            .user("计算6+8 = 几")
-        ]
+//        let messages: [OpenAIMessage] = [
+//            .user("计算6+8 = 几")
+//        ]
 //        
 //        print("=== 测试不带工具的API调用 ===")
 //        let result1 = try await sendMessage(
@@ -475,7 +475,7 @@ class RealAPITest: XCTestCase {
 //        }
 //        print("✅ 不带工具的API调用成功: \(result1.fullText)")
         
-        print("\n=== 测试带工具的API调用 (使用 Qwen/Qwen3-8B) ===")
+        print("\n=== 测试简化的工具语法 (使用 Qwen/Qwen3-8B) ===")
         let modelInfo = AIModelInfoValue(
             token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", 
             host: "api.siliconflow.cn", 
@@ -515,10 +515,12 @@ class RealAPITest: XCTestCase {
         }
         
         do {
+            print("\n🎯 使用新的简化工具语法:")
             let result2 = try await sendMessage(
                 modelInfo: modelInfo,
                 messages: messages2,
-                tools: [chatTool]
+                temperature: 0.1,
+                tools: [tool]  // 🆕 直接传入工具对象，无需 .asChatCompletionTool
             ) { result in
                 print(result.subThinkingText, terminator: "")
                 print(result.subText, terminator: "")
@@ -529,7 +531,7 @@ class RealAPITest: XCTestCase {
                     print("📋 参数: \(toolCall.function?.arguments ?? "none")")
                 }
             }
-            print("✅ 带工具的API调用成功: \(result2.fullText)")
+            print("✅ 简化工具语法调用成功: \(result2.fullText)")
         } catch {
             print("❌ 带工具的API调用失败: \(error)")
             // 不要抛出错误，让测试继续执行以查看日志

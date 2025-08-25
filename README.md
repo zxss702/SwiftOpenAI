@@ -13,6 +13,7 @@
 - ✅ **多模态** - 支持文本、图像混合输入
 - ✅ **Swift 宏** - 使用 `@SYTool`、`@SYToolArgs`、`@AIModelSchema` 自动生成代码
   - 🆕 **简洁参数定义** - 使用 `= TypeName.self` 语法，简洁优雅
+  - ✨ **简化工具调用** - 直接传入工具对象，无需 `.asChatCompletionTool` 转换
 - ✅ **类型安全** - 完整的 Swift 类型系统支持
 - ✅ **async/await** - 现代异步编程
 
@@ -140,7 +141,22 @@ struct WeatherTool {
     let parameters = WeatherArgs.self
 }
 
-// 3. 定义返回数据结构（自动生成 JSON Schema）
+// 3. 使用工具 - ✨ 简化语法
+let result = try await sendMessage(
+    modelInfo: modelInfo,
+    messages: [.user("北京今天天气如何？")],
+    tools: [WeatherTool()],  // 🎯 直接传入工具对象，无需 .asChatCompletionTool
+    temperature: 0.7
+) { streamResult in
+    print(streamResult.subText, terminator: "")
+    
+    // 显示工具调用
+    for toolCall in streamResult.allToolCalls {
+        print("🔧 使用工具: \(toolCall.function?.name ?? "")")
+    }
+}
+
+// 4. 定义返回数据结构（自动生成 JSON Schema）
 /// 天气信息响应
 @AIModelSchema
 struct WeatherResponse {
@@ -255,6 +271,91 @@ let query = ChatQuery(
         ])
     ]
 )
+```
+
+## ✨ 简化工具语法
+
+SwiftOpenAI v2.0 引入了简化的工具调用语法，让工具使用更加直观和便捷。
+
+### 🎯 新语法 vs 旧语法
+
+**🆕 新的简化语法（推荐）**：
+```swift
+// 直接传入工具对象，自动转换
+let result = try await sendMessage(
+    modelInfo: modelInfo,
+    messages: messages,
+    tools: [WeatherTool(), CalculatorTool()],  // 🎯 简洁优雅
+    temperature: 0.7
+) { streamResult in
+    print(streamResult.subText, terminator: "")
+}
+```
+
+**🔧 传统语法（仍然支持）**：
+```swift
+// 需要手动转换工具对象
+let result = try await sendMessage(
+    modelInfo: modelInfo,
+    messages: messages,
+    tools: [WeatherTool().asChatCompletionTool, CalculatorTool().asChatCompletionTool],  // 🔄 需要转换
+    temperature: 0.7
+) { streamResult in
+    print(streamResult.subText, terminator: "")
+}
+```
+
+### 📊 语法对比
+
+| 特性 | 新语法 | 传统语法 |
+|------|-------|----------|
+| **简洁性** | ✅ 更简洁 | ❌ 较繁琐 |
+| **类型安全** | ✅ 完全类型安全 | ✅ 完全类型安全 |
+| **自动转换** | ✅ 自动处理 | ❌ 手动转换 |
+| **代码可读性** | ✅ 更清晰 | ❌ 较冗长 |
+| **兼容性** | ✅ 向下兼容 | ✅ 继续支持 |
+
+### 🚀 实际使用示例
+
+```swift
+import SwiftOpenAI
+
+// 定义多个工具
+@SYTool
+struct WeatherTool {
+    let name = "get_weather"
+    let description = "获取天气信息"
+    let parameters = WeatherArgs.self
+}
+
+@SYTool  
+struct CalculatorTool {
+    let name = "calculator"
+    let description = "执行数学计算"
+    let parameters = CalculatorArgs.self
+}
+
+// 🎯 使用简化语法 - 一次性传入多个工具
+let result = try await sendMessage(
+    modelInfo: AIModelInfoValue(
+        token: "your-api-token",
+        host: "api.openai.com",
+        modelID: "gpt-4-turbo"
+    ),
+    messages: [.user("北京天气怎么样？然后帮我计算 15 + 27")],
+    tools: [WeatherTool(), CalculatorTool()],  // ✨ 直接传入多个工具
+    temperature: 0.8
+) { streamResult in
+    print("💬 AI回复: \(streamResult.subText, terminator: "")")
+    
+    // 实时显示工具调用
+    for toolCall in streamResult.allToolCalls {
+        print("\n🔧 调用工具: \(toolCall.function?.name ?? "未知")")
+        print("📋 参数: \(toolCall.function?.arguments ?? "无")")
+    }
+}
+
+print("✅ 最终回复: \(result.fullText)")
 ```
 
 ## 📋 便捷的消息管理
