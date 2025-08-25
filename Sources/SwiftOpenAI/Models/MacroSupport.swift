@@ -3,7 +3,7 @@ import Foundation
 // MARK: - 宏支持扩展
 
 /// 重新定义协议以避免宏模块的依赖问题
-public protocol OpenAIToolConvertible {
+nonisolated public protocol OpenAIToolConvertible {
     /// 转换为ChatQuery.ChatCompletionToolParam
     var asChatCompletionTool: ChatQuery.ChatCompletionToolParam { get }
 }

@@ -216,10 +216,10 @@ public struct SYToolArgsMacro: ExtensionMacro {
 }
 
 // MARK: - Protocols  
-public protocol OpenAIToolConvertible {
+nonisolated public protocol OpenAIToolConvertible {
     // 协议在SwiftOpenAI模块中定义，这里只是引用
 }
 
-public protocol SYToolArgsConvertible {
+nonisolated public protocol SYToolArgsConvertible {
     static var parametersSchema: [String: Any] { get }
 }
