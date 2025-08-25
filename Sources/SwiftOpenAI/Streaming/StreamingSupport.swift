@@ -1,8 +1,7 @@
 import Foundation
 
-/// 发送消息的主函数，提供与MacPaw OpenAI相似的使用方式
-/// 支持直接传入工具对象或已转换的ChatCompletionToolParam
-public func sendMessage<T>(
+/// 发送消息的主函数，提供与MacPaw OpenAI相似的使用方式（支持直接传入工具对象）
+public func sendMessage(
     modelInfo: AIModelInfoValue,
     messages: [ChatQuery.ChatCompletionMessageParam],
     frequencyPenalty: Double? = nil,
@@ -15,12 +14,12 @@ public func sendMessage<T>(
     stop: ChatQuery.Stop? = nil,
     temperature: Double? = 0.6,
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam? = nil,
-    tools: [T]? = nil,
+    tools: [any OpenAIToolConvertible]? = nil,  // 🆕 直接支持工具对象
     topP: Double? = nil,
     user: String? = nil,
     stream: Bool = true,
     action: (OpenAIChatStreamResult) async throws -> Void
-) async throws -> OpenAIChatResult where T: OpenAIToolConvertible {
+) async throws -> OpenAIChatResult {
     let actorHelper = await OpenAISendMessageValueHelper()
     let resolvedModelInfo = modelInfo
     
@@ -34,9 +33,6 @@ public func sendMessage<T>(
     )
     
     let openAI = OpenAI(configuration: configuration)
-    
-    // 转换工具参数
-    let convertedTools = tools?.map { $0.asChatCompletionTool }
     
     // 创建查询
     let query = ChatQuery(
@@ -52,7 +48,7 @@ public func sendMessage<T>(
         stop: stop,
         temperature: temperature,
         toolChoice: toolChoice,
-        tools: convertedTools,
+        tools: tools?.map { $0.asChatCompletionTool }, // 自动转换工具对象为ChatCompletionToolParam
         topP: topP,
         user: user,
         stream: stream

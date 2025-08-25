@@ -8,13 +8,6 @@ public protocol OpenAIToolConvertible {
     var asChatCompletionTool: ChatQuery.ChatCompletionToolParam { get }
 }
 
-// MARK: - ChatCompletionToolParam 符合 OpenAIToolConvertible
-extension ChatQuery.ChatCompletionToolParam: OpenAIToolConvertible {
-    public var asChatCompletionTool: ChatQuery.ChatCompletionToolParam {
-        return self  // 已经是目标类型，直接返回自身
-    }
-}
-
 /// 便捷方法：从字典创建工具
 extension ChatQuery.ChatCompletionToolParam {
     public static func from(_ dict: [String: Any]) -> ChatQuery.ChatCompletionToolParam? {
