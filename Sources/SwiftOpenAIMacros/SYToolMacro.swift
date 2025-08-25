@@ -84,7 +84,7 @@ public struct SYToolMacro: ExtensionMacro {
         // 生成ChatCompletionToolParam转换方法
         let extensionDecl = try ExtensionDeclSyntax("extension \(type.trimmed): OpenAIToolConvertible") {
             """
-            \(structDecl.modifiers)var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
+            public nonisolated var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
                 let paramsDict: [String: Any]
                 
                 \(raw: parametersTypeName != nil ? 

@@ -199,24 +199,27 @@ final class SwiftOpenAITests: XCTestCase {
         XCTAssertEqual(result.choices.first?.delta.role, "assistant")
     }
     
-    @MainActor
     func testOpenAISendMessageValueHelper() async {
         let helper = OpenAISendMessageValueHelper()
         
-        XCTAssertEqual(helper.fullText, "")
-        XCTAssertEqual(helper.fullThinkingText, "")
-        XCTAssertEqual(helper.state, .wait)
-        XCTAssertEqual(helper.allToolCalls.count, 0)
+        // 测试初始状态
+        let initialText = await helper.fullText
+        let initialThinkingText = await helper.fullThinkingText
+        let initialState = await helper.state
+        let initialCount = await helper.allToolCalls.count
+        
+        XCTAssertEqual(initialText, "")
+        XCTAssertEqual(initialThinkingText, "")
+        XCTAssertEqual(initialState, .wait)
+        XCTAssertEqual(initialCount, 0)
         
         await helper.setText(thinkingText: "Thinking...", text: "Hello")
         let fullText1 = await helper.fullText
         let fullThinkingText1 = await helper.fullThinkingText
+        let state1 = await helper.state
         XCTAssertEqual(fullText1, "Hello")
         XCTAssertEqual(fullThinkingText1, "Thinking...")
-        
-        await helper.setState(.text)
-        let state1 = await helper.state
-        XCTAssertEqual(state1, .text)
+        XCTAssertEqual(state1, .think)  // setText 自动设置为 .think 因为 thinkingText 不为空
         
         let toolCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
             index: 0,

@@ -1,7 +1,7 @@
 import Foundation
 
 /// 发送消息的主函数，提供与MacPaw OpenAI相似的使用方式（支持直接传入工具对象）
-public func sendMessage(
+nonisolated public func sendMessage(
     modelInfo: AIModelInfoValue,
     messages: [ChatQuery.ChatCompletionMessageParam],
     frequencyPenalty: Double? = nil,
