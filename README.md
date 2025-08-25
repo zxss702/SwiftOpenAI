@@ -408,14 +408,12 @@ let result = try await sendMessage(
     
     // 检查状态
     switch streamResult.state {
-    case .streaming:
-        print("📡 正在接收...")
-    case .completed:
-        print("✅ 完成")
-    case .failed:
-        print("❌ 失败")
-    case .cancelled:
-        print("⏹️ 已取消")
+    case .wait:
+        print("⏳ 等待中...")
+    case .think:
+        print("🤔 思考中")
+    case .text:
+        print("📝 输出内容")
     }
 }
 ```

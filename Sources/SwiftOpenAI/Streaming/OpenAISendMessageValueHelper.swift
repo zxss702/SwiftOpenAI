@@ -4,7 +4,7 @@ import Foundation
 public class OpenAISendMessageValueHelper {
     private var _fullThinkingText: String = ""
     private var _fullText: String = ""
-    private var _state: OpenAIChatStreamResultState = .streaming
+    private var _state: OpenAIChatStreamResultState = .wait
     private var _allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall] = []
     
     public init() {}
@@ -46,7 +46,7 @@ public class OpenAISendMessageValueHelper {
     public func reset() {
         _fullThinkingText = ""
         _fullText = ""
-        _state = OpenAIChatStreamResultState.streaming
+        _state = OpenAIChatStreamResultState.wait
         _allToolCalls = []
     }
 }

@@ -133,13 +133,12 @@ final class SwiftOpenAITests: XCTestCase {
     }
     
     func testOpenAIChatStreamResultState() {
-        let states: [OpenAIChatStreamResultState] = [.streaming, .completed, .failed, .cancelled]
+        let states: [OpenAIChatStreamResultState] = [.wait, .think, .text]
         
-        XCTAssertEqual(states.count, 4)
-        XCTAssertEqual(OpenAIChatStreamResultState.streaming.description, "流式传输中")
-        XCTAssertEqual(OpenAIChatStreamResultState.completed.description, "已完成")
-        XCTAssertEqual(OpenAIChatStreamResultState.failed.description, "失败")
-        XCTAssertEqual(OpenAIChatStreamResultState.cancelled.description, "已取消")
+        XCTAssertEqual(states.count, 3)
+        XCTAssertEqual(OpenAIChatStreamResultState.wait.description, "等待中")
+        XCTAssertEqual(OpenAIChatStreamResultState.think.description, "思考中")
+        XCTAssertEqual(OpenAIChatStreamResultState.text.description, "输出内容")
     }
     
     func testToolDefinition() {
@@ -206,7 +205,7 @@ final class SwiftOpenAITests: XCTestCase {
         
         XCTAssertEqual(helper.fullText, "")
         XCTAssertEqual(helper.fullThinkingText, "")
-        XCTAssertEqual(helper.state, .streaming)
+        XCTAssertEqual(helper.state, .wait)
         XCTAssertEqual(helper.allToolCalls.count, 0)
         
         await helper.setText(thinkingText: "Thinking...", text: "Hello")
@@ -215,9 +214,9 @@ final class SwiftOpenAITests: XCTestCase {
         XCTAssertEqual(fullText1, "Hello")
         XCTAssertEqual(fullThinkingText1, "Thinking...")
         
-        await helper.setState(.completed)
+        await helper.setState(.text)
         let state1 = await helper.state
-        XCTAssertEqual(state1, .completed)
+        XCTAssertEqual(state1, .text)
         
         let toolCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
             index: 0,
@@ -235,7 +234,7 @@ final class SwiftOpenAITests: XCTestCase {
         let toolCallsCount2 = await helper.allToolCalls.count
         XCTAssertEqual(fullText2, "")
         XCTAssertEqual(fullThinkingText2, "")
-        XCTAssertEqual(state2, .streaming)
+        XCTAssertEqual(state2, .wait)
         XCTAssertEqual(toolCallsCount2, 0)
     }
     

@@ -143,7 +143,7 @@ public func sendMessage(
     }
     
     // 设置完成状态
-    await actorHelper.setState(.completed)
+    await actorHelper.setState(.text)
     
     // 返回最终结果
     return await OpenAIChatResult(

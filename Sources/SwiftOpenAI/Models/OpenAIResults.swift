@@ -1,21 +1,18 @@
 import Foundation
 
 public enum OpenAIChatStreamResultState: String, Codable, CaseIterable {
-    case streaming
-    case completed
-    case failed
-    case cancelled
+    case wait    // 等待，没有任何输出
+    case think   // 正在输出思考过程
+    case text    // 正在输出content
     
     public var description: String {
         switch self {
-        case .streaming:
-            return "流式传输中"
-        case .completed:
-            return "已完成"
-        case .failed:
-            return "失败"
-        case .cancelled:
-            return "已取消"
+        case .wait:
+            return "等待中"
+        case .think:
+            return "思考中"
+        case .text:
+            return "输出内容"
         }
     }
 }
