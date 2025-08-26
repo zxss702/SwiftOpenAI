@@ -165,20 +165,19 @@ public struct SYToolArgsMacro: ExtensionMacro {
             }
         }
         
-        // 构建properties字典字符串
-        let propertiesString = properties.map { key, value in
-            "\"\(key)\": [\"type\": \"\(value)\"]"
-        }.joined(separator: ", ")
-        
-        let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
+        // 构建properties字典
+        var propertiesDict: [String: [String: String]] = [:]
+        for (key, value) in properties {
+            propertiesDict[key] = ["type": value]
+        }
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
             public static var parametersSchema: [String: Any] {
                 return [
                     "type": "object",
-                    "properties": [\(raw: propertiesString)],
-                    "required": [\(raw: requiredString)],
+                    "properties": \(raw: propertiesDict.description),
+                    "required": \(raw: required.description),
                     "additionalProperties": false
                 ]
             }
