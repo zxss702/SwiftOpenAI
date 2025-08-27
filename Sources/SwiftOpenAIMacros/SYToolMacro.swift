@@ -145,30 +145,24 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
         
         // 生成JSON Schema
-        var properties: [String: String] = [:]
+        var properties: [String: [String: Any]] = [:]
         var required: [String] = []
-        
+
         for member in structDecl.memberBlock.members {
             if let variableDecl = member.decl.as(VariableDeclSyntax.self),
                let binding = variableDecl.bindings.first,
                let pattern = binding.pattern.as(IdentifierPatternSyntax.self) {
-                
+
                 let propertyName = pattern.identifier.text
                 let isOptional = binding.typeAnnotation?.type.is(OptionalTypeSyntax.self) == true
-                
+
                 if !isOptional {
                     required.append(propertyName)
                 }
-                
+
                 let propertyType = extractPropertyType(from: binding.typeAnnotation?.type)
                 properties[propertyName] = propertyType
             }
-        }
-        
-        // 构建properties字典
-        var propertiesDict: [String: [String: String]] = [:]
-        for (key, value) in properties {
-            propertiesDict[key] = ["type": value]
         }
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
@@ -176,7 +170,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
             public static var parametersSchema: [String: Any] {
                 return [
                     "type": "object",
-                    "properties": \(raw: propertiesDict.description),
+                    "properties": \(raw: properties.description),
                     "required": \(raw: required.description),
                     "additionalProperties": false
                 ]
@@ -187,31 +181,74 @@ public struct SYToolArgsMacro: ExtensionMacro {
         return [extensionDecl]
     }
     
-    private static func extractPropertyType(from type: TypeSyntax?) -> String {
-        guard let type = type else { return "string" }
-        
-        let typeText = type.trimmedDescription
-        
+    private static func extractPropertyType(from type: TypeSyntax?) -> [String: Any] {
+        guard let type = type else { return ["type": "string"] }
+
         // 处理可选类型
         if let optionalType = type.as(OptionalTypeSyntax.self) {
             return extractPropertyType(from: optionalType.wrappedType)
         }
-        
-        // 基本类型映射
+
+        // 处理数组类型
+        if let arrayType = type.as(ArrayTypeSyntax.self) {
+            var arraySchema: [String: Any] = ["type": "array"]
+            let elementType = arrayType.element
+            arraySchema["items"] = extractPropertyType(from: elementType)
+            return arraySchema
+        }
+
+        // 处理标识符类型（自定义类型）
+        if let identifierType = type.as(IdentifierTypeSyntax.self) {
+            let typeName = identifierType.name.text
+
+            // 基本类型映射
+            switch typeName.lowercased() {
+            case "string":
+                return ["type": "string"]
+            case "int", "int32", "int64":
+                return ["type": "integer"]
+            case "double", "float":
+                return ["type": "number"]
+            case "bool":
+                return ["type": "boolean"]
+            default:
+                // 对于自定义类型，生成基本的object schema
+                // 注意：这是一个简化的实现，无法在宏扩展时访问其他类型的定义
+                // 在实际使用中，这样的嵌套类型需要在运行时通过其他方式处理
+                return ["type": "object", "description": "Nested object of type \(typeName)"]
+            }
+        }
+
+        // 处理其他类型语法
+        let typeText = type.trimmedDescription
+
+        // 基本类型映射（作为fallback）
         switch typeText.lowercased() {
         case "string":
-            return "string"
+            return ["type": "string"]
         case "int", "int32", "int64":
-            return "integer"
+            return ["type": "integer"]
         case "double", "float":
-            return "number"
+            return ["type": "number"]
         case "bool":
-            return "boolean"
+            return ["type": "boolean"]
         default:
-            if typeText.hasPrefix("[") && typeText.hasSuffix("]") {
-                return "array"
-            }
-            return "object"
+            return ["type": "object"]
+        }
+    }
+
+    private static func parseSimpleType(_ typeText: String) -> [String: Any]? {
+        switch typeText.lowercased() {
+        case "string":
+            return ["type": "string"]
+        case "int", "int32", "int64":
+            return ["type": "integer"]
+        case "double", "float":
+            return ["type": "number"]
+        case "bool":
+            return ["type": "boolean"]
+        default:
+            return nil
         }
     }
 }
