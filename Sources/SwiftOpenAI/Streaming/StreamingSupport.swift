@@ -18,9 +18,10 @@ nonisolated public func sendMessage(
     topP: Double? = nil,
     user: String? = nil,
     stream: Bool = true,
+    extraBody: [String: AnyCodableValue]? = nil,
     action: (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
-    let actorHelper = await OpenAISendMessageValueHelper()
+    let actorHelper = OpenAISendMessageValueHelper()
     let resolvedModelInfo = modelInfo
     
     // 创建OpenAI配置
@@ -51,7 +52,8 @@ nonisolated public func sendMessage(
         tools: tools?.map { $0.asChatCompletionTool }, // 自动转换工具对象为ChatCompletionToolParam
         topP: topP,
         user: user,
-        stream: stream
+        stream: stream,
+        extraBody: extraBody
     )
     
     // 处理流式响应
