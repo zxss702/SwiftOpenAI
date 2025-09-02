@@ -145,7 +145,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
         
         // 生成JSON Schema
-        var properties: [String: String] = [:]
+        var properties: [String: [String: Any]] = [:]
         var required: [String] = []
         
         for member in structDecl.memberBlock.members {
@@ -161,14 +161,15 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 }
                 
                 let propertyType = extractPropertyType(from: binding.typeAnnotation?.type)
-                properties[propertyName] = propertyType
+                let propertyDescription = member.extractDocumentationComment()
+                
+                var propertyDict: [String: Any] = ["type": propertyType]
+                if let description = propertyDescription {
+                    propertyDict["description"] = description
+                }
+                
+                properties[propertyName] = propertyDict
             }
-        }
-        
-        // 构建properties字典
-        var propertiesDict: [String: [String: String]] = [:]
-        for (key, value) in properties {
-            propertiesDict[key] = ["type": value]
         }
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
@@ -176,7 +177,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
             public static var parametersSchema: [String: Any] {
                 return [
                     "type": "object",
-                    "properties": \(raw: propertiesDict.description),
+                    "properties": \(raw: properties.description),
                     "required": \(raw: required.description),
                     "additionalProperties": false
                 ]
@@ -215,6 +216,8 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
     }
 }
+
+
 
 // MARK: - Protocols  
 nonisolated public protocol OpenAIToolConvertible {

@@ -99,6 +99,28 @@ public struct DailyForecast {
     let rainChance: Int
 }
 
+
+
+// MARK: - 测试 SYToolArgs 宏的文档注释提取功能
+@SYToolArgs
+struct TestEditToolArgs {
+    /// 若涉及自我修正，需包含之前的错误和修正建议。
+    let 参考资料: String
+    
+    /// 示例："为 User 模型增加一个 lastName 属性。"
+    let 用户的意图: String
+    
+    /// 示例："1. 定位到 `User.swift` 文件。\n2. 在文件中的现有属性后，添加 `public var lastName: String`。\n3. 检查并更新相关的初始化方法以包含 `lastName`。"
+    let 修改方针: String
+}
+
+@SYTool
+struct TestEditTool {
+    let name: String = "Edit"
+    let description: String = "代码编辑执行器"
+    let parameters = TestEditToolArgs.self
+}
+
 final class ExtendedFeaturesTests: XCTestCase {
     
     // MARK: - 图片消息测试
@@ -433,4 +455,45 @@ final class ExtendedFeaturesTests: XCTestCase {
             }
         }
     }
+    
+    func testSYToolArgsDocumentationExtraction() throws {
+        // 测试 SYToolArgs 宏是否能正确提取属性的文档注释
+        let schema = TestEditToolArgs.parametersSchema
+        
+        // 验证基本结构
+        XCTAssertEqual(schema["type"] as? String, "object")
+        XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
+        
+        // 验证属性
+        let properties = schema["properties"] as? [String: [String: Any]]
+        XCTAssertNotNil(properties)
+        
+        // 验证 参考资料 属性
+        let 参考资料 = properties?["参考资料"] as? [String: Any]
+        XCTAssertNotNil(参考资料)
+        XCTAssertEqual(参考资料?["type"] as? String, "string")
+        XCTAssertEqual(参考资料?["description"] as? String, "若涉及自我修正，需包含之前的错误和修正建议。")
+        
+        // 验证 用户的意图 属性
+        let 用户的意图 = properties?["用户的意图"] as? [String: Any]
+        XCTAssertNotNil(用户的意图)
+        XCTAssertEqual(用户的意图?["type"] as? String, "string")
+        XCTAssertEqual(用户的意图?["description"] as? String, "示例：\"为 User 模型增加一个 lastName 属性。\"")
+        
+        // 验证 修改方针 属性
+        let 修改方针 = properties?["修改方针"] as? [String: Any]
+        XCTAssertNotNil(修改方针)
+        XCTAssertEqual(修改方针?["type"] as? String, "string")
+        XCTAssertEqual(修改方针?["description"] as? String, "示例：\"1. 定位到 `User.swift` 文件。\\n2. 在文件中的现有属性后，添加 `public var lastName: String`。\\n3. 检查并更新相关的初始化方法以包含 `lastName`。\"")
+        
+        // 验证必需字段
+        let required = schema["required"] as? [String]
+        XCTAssertNotNil(required)
+        XCTAssertEqual(required?.count, 3)
+        XCTAssertTrue(required?.contains("参考资料") == true)
+        XCTAssertTrue(required?.contains("用户的意图") == true)
+        XCTAssertTrue(required?.contains("修改方针") == true)
+    }
+    
+
 }
