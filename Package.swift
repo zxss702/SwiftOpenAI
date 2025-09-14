@@ -5,7 +5,7 @@ import CompilerPluginSupport
 let package = Package(
     name: "SwiftOpenAI",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14), .iOS(.v17), .macCatalyst(.v17), .visionOS(.v1)
     ],
     products: [
         .library(
