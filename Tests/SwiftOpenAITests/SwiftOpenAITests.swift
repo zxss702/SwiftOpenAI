@@ -74,7 +74,7 @@ final class SwiftOpenAITests: XCTestCase {
         let userMessage = OpenAIMessage.user("Hello, world!")
         let systemMessage = OpenAIMessage.system("You are an AI assistant.")
         let assistantMessage = OpenAIMessage.assistant("Hi there!")
-        let toolMessage = OpenAIMessage.tool("Tool result", toolCallId: "call_123")
+        let toolMessage = OpenAIMessage.tool(ToolMessageParam(content: .textContent("Tool result"), toolCallId: "call_123"))
         
         XCTAssertEqual(userMessage.role, .user)
         XCTAssertEqual(systemMessage.role, .system)

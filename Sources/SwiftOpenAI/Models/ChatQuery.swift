@@ -187,9 +187,16 @@ public struct ChatQuery: Codable {
                 self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls))
                 
             case .tool:
-                let content = try container.decode(String.self, forKey: .content)
                 let toolCallId = try container.decode(String.self, forKey: .toolCallId)
-                self = .tool(ToolMessageParam(content: .textContent(content), toolCallId: toolCallId))
+                
+                // 尝试解码为字符串或数组
+                if let stringContent = try? container.decode(String.self, forKey: .content) {
+                    self = .tool(ToolMessageParam(content: .textContent(stringContent), toolCallId: toolCallId))
+                } else if let arrayContent = try? container.decode([ToolMessageParam.Content.ContentPart].self, forKey: .content) {
+                    self = .tool(ToolMessageParam(content: .contentParts(arrayContent), toolCallId: toolCallId))
+                } else {
+                    self = .tool(ToolMessageParam(content: .textContent(""), toolCallId: toolCallId))
+                }
             }
         }
         
@@ -217,9 +224,7 @@ public struct ChatQuery: Codable {
                 
             case .tool(let toolParam):
                 try container.encode(Role.tool, forKey: .role)
-                if case .textContent(let text) = toolParam.content {
-                    try container.encode(text, forKey: .content)
-                }
+                try container.encode(toolParam.content, forKey: .content)
                 try container.encode(toolParam.toolCallId, forKey: .toolCallId)
             }
         }

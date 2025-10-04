@@ -75,7 +75,7 @@ extension ChatQuery.ChatCompletionMessageParam {
     
     // MARK: - Tool Messages
     
-    /// 创建工具响应消息
+    /// 创建简单文本工具响应消息
     public static nonisolated func tool(
         _ text: String,
         toolCallId: String
@@ -83,6 +83,61 @@ extension ChatQuery.ChatCompletionMessageParam {
         return .tool(
             ToolMessageParam(
                 content: .textContent(text),
+                toolCallId: toolCallId
+            )
+        )
+    }
+    
+    /// 创建带图片的工具响应消息
+    public static nonisolated func tool(
+        _ text: String,
+        images imageDatas: [Data],
+        detail: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        toolCallId: String
+    ) -> Self {
+        return .tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    imageDatas.map { imageData in
+                        ToolMessageParam.Content.ContentPart.image(
+                            ToolMessageParam.Content.ContentPart.ImageContent(
+                                imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                                    imageData: imageData,
+                                    detail: detail
+                                )
+                            )
+                        )
+                    } + [
+                        ToolMessageParam.Content.ContentPart.text(
+                            ToolMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                toolCallId: toolCallId
+            )
+        )
+    }
+    
+    /// 创建只有图片的工具响应消息
+    public static nonisolated func tool(
+        images imageDatas: [Data],
+        detail: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        toolCallId: String
+    ) -> Self {
+        return .tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    imageDatas.map { imageData in
+                        ToolMessageParam.Content.ContentPart.image(
+                            ToolMessageParam.Content.ContentPart.ImageContent(
+                                imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                                    imageData: imageData,
+                                    detail: detail
+                                )
+                            )
+                        )
+                    }
+                ),
                 toolCallId: toolCallId
             )
         )
@@ -167,6 +222,14 @@ extension ChatQuery.ChatCompletionMessageParam {
         case .user(let userParam):
             if case .string(let text) = userParam.content {
                 return text
+            } else if case .contentParts(let parts) = userParam.content {
+                // 提取所有文本部分
+                return parts.compactMap { part in
+                    if case .text(let textContent) = part {
+                        return textContent.text
+                    }
+                    return nil
+                }.joined(separator: " ")
             }
             return nil
         case .assistant(let assistantParam):
@@ -174,6 +237,14 @@ extension ChatQuery.ChatCompletionMessageParam {
         case .tool(let toolParam):
             if case .textContent(let text) = toolParam.content {
                 return text
+            } else if case .contentParts(let parts) = toolParam.content {
+                // 提取所有文本部分
+                return parts.compactMap { part in
+                    if case .text(let textContent) = part {
+                        return textContent.text
+                    }
+                    return nil
+                }.joined(separator: " ")
             }
             return nil
         }
@@ -222,6 +293,31 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
     
     /// 添加工具响应消息
     public mutating func addToolMessage(_ text: String, toolCallId: String) {
-        self.append(.tool(text, toolCallId: toolCallId))
+        self.append(.tool(ToolMessageParam(content: .textContent(text), toolCallId: toolCallId)))
+    }
+    
+    /// 添加带图片的工具响应消息
+    public mutating func addToolMessageWithImages(_ text: String, imageDatas: [Data], detail: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto, toolCallId: String) {
+        self.append(.tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    imageDatas.map { imageData in
+                        ToolMessageParam.Content.ContentPart.image(
+                            ToolMessageParam.Content.ContentPart.ImageContent(
+                                imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                                    imageData: imageData,
+                                    detail: detail
+                                )
+                            )
+                        )
+                    } + [
+                        ToolMessageParam.Content.ContentPart.text(
+                            ToolMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                toolCallId: toolCallId
+            )
+        ))
     }
 }
