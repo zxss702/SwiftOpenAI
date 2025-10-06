@@ -188,9 +188,9 @@ public struct SYToolArgsMacro: ExtensionMacro {
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
             public static var toolProperties: String {
-                return \"\"\"
+                return #\"\"\"
                 \(raw: propertiesJSONString)
-                \"\"\"
+                \"\"\"#
             }
             
             public static var parametersSchema: [String: Any] {
