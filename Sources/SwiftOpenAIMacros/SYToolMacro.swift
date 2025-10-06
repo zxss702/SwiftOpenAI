@@ -182,12 +182,12 @@ public struct SYToolArgsMacro: ExtensionMacro {
             }
         }
         
-        let propertiesJSONString = propertiesJSONCode.joined(separator: ",\n            ")
+        let propertiesJSONString = propertiesJSONCode.joined(separator: ",")
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
-            \(propertiesJSONString.isEmpty ? "public static var toolProperties: String = \"\"" : "public static var toolProperties: String = \"\"\"\n\(raw: propertiesJSONString)\n\"\"\"")
+            \(propertiesJSONString.isEmpty ? "public static var toolProperties: String = \"\"" : "public static var toolProperties: String = #\"\(raw: propertiesJSONString)\"#")
             
             public static var parametersSchema: [String: Any] =[
                     "type": "object",
