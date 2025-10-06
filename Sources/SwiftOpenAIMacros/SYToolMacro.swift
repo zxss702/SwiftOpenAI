@@ -182,7 +182,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
             }
         }
         
-        let propertiesJSONString = propertiesJSONCode.joined(separator: ",")
+        let propertiesJSONString = propertiesJSONCode.joined(separator: ", ")
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
