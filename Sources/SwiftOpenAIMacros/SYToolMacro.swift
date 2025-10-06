@@ -189,14 +189,12 @@ public struct SYToolArgsMacro: ExtensionMacro {
             """
             \(propertiesJSONString.isEmpty ? "public static var toolProperties: String = \"\"" : "public static var toolProperties: String = \"\"\"\n\(raw: propertiesJSONString)\n\"\"\"")
             
-            public static var parametersSchema: [String: Any] {
-                return [
+            public static var parametersSchema: [String: Any] =[
                     "type": "object",
                     "properties": \(raw: propertiesDict),
                     "required": [\(raw: requiredString)],
                     "additionalProperties": false
-                ]
-            }
+            ]
             """
         }
         
