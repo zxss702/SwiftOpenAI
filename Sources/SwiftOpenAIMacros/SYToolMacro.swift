@@ -160,12 +160,17 @@ public struct SYToolArgsMacro: ExtensionMacro {
                     required.append(propertyName)
                 }
                 
-                let propertyType = extractPropertyType(from: binding.typeAnnotation?.type)
+                let propertyTypeInfo = extractPropertyType(from: binding.typeAnnotation?.type)
                 let propertyDescription = member.extractDocumentationComment()
                 
-                var propertyDict: [String: Any] = ["type": propertyType]
+                var propertyDict: [String: Any] = ["type": propertyTypeInfo.type]
                 if let description = propertyDescription {
                     propertyDict["description"] = description
+                }
+                
+                // 如果是数组类型，添加items字段
+                if let items = propertyTypeInfo.items {
+                    propertyDict["items"] = items
                 }
                 
                 properties[propertyName] = propertyDict
@@ -188,8 +193,13 @@ public struct SYToolArgsMacro: ExtensionMacro {
         return [extensionDecl]
     }
     
-    private static func extractPropertyType(from type: TypeSyntax?) -> String {
-        guard let type = type else { return "string" }
+    private struct PropertyTypeInfo {
+        let type: String
+        let items: [String: Any]?
+    }
+    
+    private static func extractPropertyType(from type: TypeSyntax?) -> PropertyTypeInfo {
+        guard let type = type else { return PropertyTypeInfo(type: "string", items: nil) }
         
         let typeText = type.trimmedDescription
         
@@ -198,7 +208,39 @@ public struct SYToolArgsMacro: ExtensionMacro {
             return extractPropertyType(from: optionalType.wrappedType)
         }
         
+        // 处理数组类型
+        if let arrayType = type.as(ArrayTypeSyntax.self) {
+            let elementType = extractElementType(from: arrayType.element)
+            return PropertyTypeInfo(type: "array", items: ["type": elementType])
+        }
+        
         // 基本类型映射
+        switch typeText.lowercased() {
+        case "string":
+            return PropertyTypeInfo(type: "string", items: nil)
+        case "int", "int32", "int64":
+            return PropertyTypeInfo(type: "integer", items: nil)
+        case "double", "float":
+            return PropertyTypeInfo(type: "number", items: nil)
+        case "bool":
+            return PropertyTypeInfo(type: "boolean", items: nil)
+        default:
+            // 兜底：通过字符串形式判断是否为数组
+            if typeText.hasPrefix("[") && typeText.hasSuffix("]") {
+                let elementTypeText = String(typeText.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                let elementType = mapTypeTextToJSONType(elementTypeText)
+                return PropertyTypeInfo(type: "array", items: ["type": elementType])
+            }
+            return PropertyTypeInfo(type: "object", items: nil)
+        }
+    }
+    
+    private static func extractElementType(from type: TypeSyntax) -> String {
+        let typeText = type.trimmedDescription
+        return mapTypeTextToJSONType(typeText)
+    }
+    
+    private static func mapTypeTextToJSONType(_ typeText: String) -> String {
         switch typeText.lowercased() {
         case "string":
             return "string"
@@ -209,9 +251,6 @@ public struct SYToolArgsMacro: ExtensionMacro {
         case "bool":
             return "boolean"
         default:
-            if typeText.hasPrefix("[") && typeText.hasSuffix("]") {
-                return "array"
-            }
             return "object"
         }
     }
