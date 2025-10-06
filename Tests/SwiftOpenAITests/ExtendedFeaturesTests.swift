@@ -18,7 +18,7 @@ public struct ComplexToolArgs {
 }
 
 /// 嵌套配置结构
-@AIModelSchema
+@SYToolArgs
 public struct ToolConfig {
     /// 精度设置
     let precision: Int

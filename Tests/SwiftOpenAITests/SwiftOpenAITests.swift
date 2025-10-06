@@ -6,6 +6,9 @@ import XCTest
 struct TestToolArgs {
     let message: String
     let count: Int?
+    let tt: [String]
+    let kt: DocumentedTestStruct2
+    let kt2: DocumentedTestStruct2
 }
 
 @SYTool
@@ -35,6 +38,18 @@ enum TestEnum: String, CaseIterable {
 /// Test structure with documentation
 @AIModelSchema
 struct DocumentedTestStruct {
+    /// The name field
+    let name: String
+    /// The age field
+    let age: Int
+    /// Optional description
+    let description: String?
+    /// List of tags
+    let tags: [String]?
+}
+
+@SYToolArgs
+struct DocumentedTestStruct2 {
     /// The name field
     let name: String
     /// The age field
@@ -143,7 +158,7 @@ final class SwiftOpenAITests: XCTestCase {
     
     func testToolDefinition() {
         let tool = BasicTestTool()
-        
+        print(tool.asChatCompletionTool)
         XCTAssertEqual(tool.name, "basic_test_tool")
         XCTAssertEqual(tool.description, "基础测试工具")
         

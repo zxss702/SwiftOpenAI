@@ -9,6 +9,7 @@ public protocol AIModelSchema {
 
 /// SYToolArgsConvertible协议，用于工具参数转换
 public protocol SYToolArgsConvertible {
+    static var toolProperties: String { get }
     static var parametersSchema: [String: Any] { get }
 }
 
@@ -19,5 +20,5 @@ public macro AIModelSchema() = #externalMacro(module: "SwiftOpenAIMacros", type:
 @attached(extension, conformances: OpenAIToolConvertible, names: named(asChatCompletionTool))
 public macro SYTool() = #externalMacro(module: "SwiftOpenAIMacros", type: "SYToolMacro")
 
-@attached(extension, conformances: SYToolArgsConvertible, names: named(parametersSchema))
+@attached(extension, conformances: SYToolArgsConvertible, names: named(parametersSchema), named(toolProperties))
 public macro SYToolArgs() = #externalMacro(module: "SwiftOpenAIMacros", type: "SYToolArgsMacro")

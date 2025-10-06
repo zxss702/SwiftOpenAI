@@ -1,26 +1,29 @@
 import XCTest
 @testable import SwiftOpenAI
 
+// 测试用的结构体定义（移到类外部以避免作用域问题）
+
+// 测试简单的数组类型处理
+@SYToolArgs
+nonisolated struct SimpleArrayArgs: Codable {
+    let names: [String]
+    let count: Int
+}
+
+@SYToolArgs
+nonisolated struct TestConfig: Codable {
+    let enabled: Bool
+    let value: String
+}
+
+// 测试嵌套对象类型处理
+@SYToolArgs
+nonisolated struct NestedObjectArgs: Codable {
+    /// 配置对象
+    let config: TestConfig
+}
+
 final class NestedToolArgsTest: XCTestCase {
-
-    // 测试简单的数组类型处理
-    @SYToolArgs
-    nonisolated struct SimpleArrayArgs: Codable {
-        let names: [String]
-        let count: Int
-    }
-
-    // 测试嵌套对象类型处理
-    @SYToolArgs
-    nonisolated struct NestedObjectArgs: Codable {
-        let config: Config
-    }
-
-    @SYToolArgs
-    nonisolated struct Config: Codable {
-        let enabled: Bool
-        let value: String
-    }
 
     func testArraySchema() {
         // 测试数组类型的schema生成
@@ -77,12 +80,12 @@ final class NestedToolArgsTest: XCTestCase {
         // 分别测试每个类型的schema
         let simpleSchema = SimpleArrayArgs.parametersSchema
         let nestedSchema = NestedObjectArgs.parametersSchema
-        let configSchema = Config.parametersSchema
+        let configSchema = TestConfig.parametersSchema
 
-        print("\n=== Config Schema ===")
+        print("\n=== TestConfig Schema ===")
         print(configSchema)
 
-        // 验证Config的schema结构
+        // 验证TestConfig的schema结构
         XCTAssertEqual(configSchema["type"] as? String, "object")
         XCTAssertNotNil(configSchema["properties"])
 
@@ -97,6 +100,56 @@ final class NestedToolArgsTest: XCTestCase {
             if let valueProperty = properties["value"] as? [String: Any] {
                 XCTAssertEqual(valueProperty["type"] as? String, "string")
             }
+        }
+    }
+    
+    func testToolProperties() {
+        // 测试新增的 toolProperties 功能
+        print("\n=== TestConfig.toolProperties ===")
+        print(TestConfig.toolProperties)
+        
+        print("\n=== SimpleArrayArgs.toolProperties ===")
+        print(SimpleArrayArgs.toolProperties)
+        
+        print("\n=== NestedObjectArgs.toolProperties ===")
+        print(NestedObjectArgs.toolProperties)
+        
+        // 验证 toolProperties 是有效的 JSON 片段
+        let configProps = TestConfig.toolProperties
+        XCTAssertFalse(configProps.isEmpty)
+        XCTAssertTrue(configProps.contains("enabled"))
+        XCTAssertTrue(configProps.contains("value"))
+        
+        // 验证嵌套结构正确引用了子类型的 toolProperties
+        let nestedProps = NestedObjectArgs.toolProperties
+        XCTAssertTrue(nestedProps.contains("config"))
+    }
+    
+    func testNestedObjectPropertiesStructure() {
+        // 深入测试嵌套对象的 properties 结构
+        let schema = NestedObjectArgs.parametersSchema
+        
+        if let properties = schema["properties"] as? [String: Any],
+           let configProperty = properties["config"] as? [String: Any] {
+            
+            // 验证 config 属性包含 properties 字段（嵌套属性）
+            XCTAssertNotNil(configProperty["properties"], "嵌套对象应该包含 properties 字段")
+            
+            if let configProps = configProperty["properties"] as? [String: Any] {
+                // 验证嵌套对象的内部属性
+                XCTAssertNotNil(configProps["enabled"], "应该包含 enabled 属性")
+                XCTAssertNotNil(configProps["value"], "应该包含 value 属性")
+                
+                if let enabledProp = configProps["enabled"] as? [String: Any] {
+                    XCTAssertEqual(enabledProp["type"] as? String, "boolean")
+                }
+                
+                if let valueProp = configProps["value"] as? [String: Any] {
+                    XCTAssertEqual(valueProp["type"] as? String, "string")
+                }
+            }
+        } else {
+            XCTFail("未能正确解析嵌套对象的结构")
         }
     }
 }
