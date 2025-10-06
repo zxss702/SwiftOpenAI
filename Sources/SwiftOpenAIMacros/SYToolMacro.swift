@@ -146,7 +146,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
         
         // 收集属性信息
         var propertiesJSONCode: [String] = []
-        var propertiesDictCode: [String] = []
+        var propertiesDict: [String: [String: Any]] = [:]
         var required: [String] = []
         
         for member in structDecl.memberBlock.members {
@@ -172,18 +172,17 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 )
                 propertiesJSONCode.append(propertyJSON)
                 
-                // 构建属性字典代码（用于 parametersSchema）
-                let propertyDict = buildPropertyDictCode(
+                // 构建属性字典（用于 parametersSchema）
+                let propertyDict = buildPropertyDict(
                     name: propertyName,
                     typeInfo: propertyTypeInfo,
                     description: propertyDescription
                 )
-                propertiesDictCode.append(propertyDict)
+                propertiesDict[propertyName] = propertyDict
             }
         }
         
         let propertiesJSONString = propertiesJSONCode.joined(separator: ",\n            ")
-        let propertiesDictString = propertiesDictCode.joined(separator: ",\n            ")
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
@@ -195,13 +194,9 @@ public struct SYToolArgsMacro: ExtensionMacro {
             }
             
             public static var parametersSchema: [String: Any] {
-                let properties: [String: [String: Any]] = [
-                    \(raw: propertiesDictString)
-                ]
-                
                 return [
                     "type": "object",
-                    "properties": properties,
+                    "properties": \(raw: propertiesDict),
                     "required": [\(raw: requiredString)],
                     "additionalProperties": false
                 ]
@@ -259,11 +254,11 @@ public struct SYToolArgsMacro: ExtensionMacro {
         return "\"\(name)\": {}"
     }
     
-    private static func buildPropertyDictCode(
+    private static func buildPropertyDict(
         name: String,
         typeInfo: PropertyTypeInfo,
         description: String?
-    ) -> String {
+    ) -> [String: Any] {
         // 构建属性字典
         var propertyDict: [String: Any] = ["type": typeInfo.type]
         
@@ -280,13 +275,7 @@ public struct SYToolArgsMacro: ExtensionMacro {
             propertyDict["properties"] = "\(customType).parametersSchema[\"properties\"] as! [String: Any]"
         }
         
-        // 在宏编译阶段使用 JSONSerialization 生成字典代码
-        if let data = try? JSONSerialization.data(withJSONObject: propertyDict),
-           let jsonString = String(data: data, encoding: .utf8) {
-            return "\"\(name)\": \(jsonString)"
-        }
-        
-        return "\"\(name)\": [:]"
+        return propertyDict
     }
     
     // 转义 JSON 字符串
