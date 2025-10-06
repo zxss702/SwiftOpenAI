@@ -145,7 +145,8 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
         
         // 收集属性信息
-        var propertiesCode: [String] = []
+        var propertiesJSONCode: [String] = []
+        var propertiesDictCode: [String] = []
         var required: [String] = []
         
         for member in structDecl.memberBlock.members {
@@ -163,40 +164,39 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 let propertyTypeInfo = extractPropertyType(from: binding.typeAnnotation?.type)
                 let propertyDescription = member.extractDocumentationComment()
                 
-                // 构建属性字典的代码
-                let propertyCode = buildPropertyDictCode(
+                // 构建属性 JSON 字符串（用于 toolProperties）
+                let propertyJSON = buildPropertyJSONString(
                     name: propertyName,
                     typeInfo: propertyTypeInfo,
                     description: propertyDescription
                 )
-                propertiesCode.append(propertyCode)
+                propertiesJSONCode.append(propertyJSON)
+                
+                // 构建属性字典代码（用于 parametersSchema）
+                let propertyDict = buildPropertyDictCode(
+                    name: propertyName,
+                    typeInfo: propertyTypeInfo,
+                    description: propertyDescription
+                )
+                propertiesDictCode.append(propertyDict)
             }
         }
         
-        let propertiesString = propertiesCode.joined(separator: ",\n            ")
+        let propertiesJSONString = propertiesJSONCode.joined(separator: ",\n            ")
+        let propertiesDictString = propertiesDictCode.joined(separator: ",\n            ")
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
             public static var toolProperties: String {
-                // 使用 JSONEncoder 生成 JSON 字符串
-                let properties: [String: [String: Any]] = [
-                    \(raw: propertiesString)
-                ]
-                
-                if let data = try? JSONSerialization.data(withJSONObject: properties),
-                   let jsonString = String(data: data, encoding: .utf8) {
-                    // 移除外层的大括号，只保留属性内容
-                    let trimmed = jsonString.dropFirst().dropLast()
-                    return String(trimmed)
-                } else {
-                    return ""
-                }
+                return \"\"\"
+                \(raw: propertiesJSONString)
+                \"\"\"
             }
             
             public static var parametersSchema: [String: Any] {
                 let properties: [String: [String: Any]] = [
-                    \(raw: propertiesString)
+                    \(raw: propertiesDictString)
                 ]
                 
                 return [
@@ -229,39 +229,74 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
     }
     
+    private static func buildPropertyJSONString(
+        name: String,
+        typeInfo: PropertyTypeInfo,
+        description: String?
+    ) -> String {
+        // 构建属性字典
+        var propertyDict: [String: Any] = ["type": typeInfo.type]
+        
+        if let description = description {
+            propertyDict["description"] = description
+        }
+        
+        if let items = typeInfo.items, let itemType = items["type"] as? String {
+            propertyDict["items"] = ["type": itemType]
+        }
+        
+        // 如果是自定义对象类型，引用其 toolProperties
+        if typeInfo.type == "object", let customType = typeInfo.customTypeName {
+            propertyDict["properties"] = "{\(customType).toolProperties}"
+        }
+        
+        // 在宏编译阶段使用 JSONSerialization 生成 JSON 字符串
+        if let data = try? JSONSerialization.data(withJSONObject: propertyDict),
+           let jsonString = String(data: data, encoding: .utf8) {
+            return "\"\(name)\": \(jsonString)"
+        }
+        
+        return "\"\(name)\": {}"
+    }
+    
     private static func buildPropertyDictCode(
         name: String,
         typeInfo: PropertyTypeInfo,
         description: String?
     ) -> String {
-        // 如果是自定义对象类型且有类型名称，引用其 parametersSchema
-        if typeInfo.type == "object", let customType = typeInfo.customTypeName {
-            var dictCode = "\"type\": \"object\""
-            
-            if let description = description {
-                let escapedDesc = escapeSwiftString(description)
-                dictCode += ", \"description\": \"\(escapedDesc)\""
-            }
-            
-            // 引用嵌套类型的 parametersSchema 中的 properties
-            dictCode += ", \"properties\": \(customType).parametersSchema[\"properties\"] as! [String: Any]"
-            
-            return "\"\(name)\": [\(dictCode)]"
-        }
-        
-        // 基本类型
-        var dictCode = "\"type\": \"\(typeInfo.type)\""
+        // 构建属性字典
+        var propertyDict: [String: Any] = ["type": typeInfo.type]
         
         if let description = description {
-            let escapedDesc = escapeSwiftString(description)
-            dictCode += ", \"description\": \"\(escapedDesc)\""
+            propertyDict["description"] = description
         }
         
         if let items = typeInfo.items, let itemType = items["type"] as? String {
-            dictCode += ", \"items\": [\"type\": \"\(itemType)\"]"
+            propertyDict["items"] = ["type": itemType]
         }
         
-        return "\"\(name)\": [\(dictCode)]"
+        // 如果是自定义对象类型，引用其 parametersSchema
+        if typeInfo.type == "object", let customType = typeInfo.customTypeName {
+            propertyDict["properties"] = "\(customType).parametersSchema[\"properties\"] as! [String: Any]"
+        }
+        
+        // 在宏编译阶段使用 JSONSerialization 生成字典代码
+        if let data = try? JSONSerialization.data(withJSONObject: propertyDict),
+           let jsonString = String(data: data, encoding: .utf8) {
+            return "\"\(name)\": \(jsonString)"
+        }
+        
+        return "\"\(name)\": [:]"
+    }
+    
+    // 转义 JSON 字符串
+    private static func escapeJSONString(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
     }
     
     // 转义 Swift 字符串字面量
