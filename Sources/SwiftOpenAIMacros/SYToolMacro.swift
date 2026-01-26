@@ -121,7 +121,8 @@ public struct SYToolMacro: ExtensionMacro {
 
 // MARK: - SYToolArgs Macro
 enum SYToolArgsMacroDiagnostic: String, DiagnosticMessage {
-    case requiresStruct = "@SYToolArgs can only be applied to a struct"
+    case requiresStructOrEnum = "@SYToolArgs can only be applied to a struct or an enum"
+    case enumAssociatedValuesNotSupported = "@SYToolArgs does not support enums with associated values"
 
     var message: String { rawValue }
     var diagnosticID: MessageID {
@@ -138,15 +139,51 @@ public struct SYToolArgsMacro: ExtensionMacro {
         conformingTo protocols: [TypeSyntax],
         in context: some MacroExpansionContext
     ) throws -> [ExtensionDeclSyntax] {
-        guard let structDecl = declaration.as(StructDeclSyntax.self) else {
+        guard declaration.is(StructDeclSyntax.self) || declaration.is(EnumDeclSyntax.self) else {
             context.diagnose(
-                Diagnostic(node: node, message: SYToolArgsMacroDiagnostic.requiresStruct))
+                Diagnostic(node: node, message: SYToolArgsMacroDiagnostic.requiresStructOrEnum))
             return []
         }
+        if let enumDecl = declaration.as(EnumDeclSyntax.self) {
+            let enumDescription = enumDecl.extractDocumentationComment()
+            let enumValues = enumDecl.memberBlock.members.compactMap { member -> String? in
+                if let enumCase = member.decl.as(EnumCaseDeclSyntax.self),
+                   let element = enumCase.elements.first {
+                    if element.parameterClause != nil {
+                        context.diagnose(
+                            Diagnostic(node: node, message: SYToolArgsMacroDiagnostic.enumAssociatedValuesNotSupported))
+                        return nil
+                    }
+                    return element.name.text
+                }
+                return nil
+            }
+            let enumValuesString = enumValues.map { "\"\($0)\"" }.joined(separator: ", ")
+            let descriptionLine = enumDescription.map {
+                "schema[\"description\"] = \"\(escapeSwiftString($0))\""
+            } ?? ""
+            
+            let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
+                """
+                public static var toolProperties: String { "" }
+                
+                public static var parametersSchema: [String: Any] = {
+                    var schema: [String: Any] = [
+                        "type": "string",
+                        "enum": [\(raw: enumValuesString)]
+                    ]
+                    \(raw: descriptionLine)
+                    return schema
+                }()
+                """
+            }
+            
+            return [extensionDecl]
+        }
         
+        guard let structDecl = declaration.as(StructDeclSyntax.self) else { return [] }
         // 收集属性信息
-        var propertiesJSONCode: [String] = []
-        var propertiesDict: [String: [String: Any]] = [:]
+        var propertiesDictEntries: [String] = []
         var required: [String] = []
         
         for member in structDecl.memberBlock.members {
@@ -164,34 +201,39 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 let propertyTypeInfo = extractPropertyType(from: binding.typeAnnotation?.type)
                 let propertyDescription = member.extractDocumentationComment()
                 
-                // 构建属性 JSON 字符串（用于 toolProperties）
-                let propertyJSON = buildPropertyJSONString(
+                // 构建属性字典（用于 parametersSchema / toolProperties）
+                let propertyDictCode = buildPropertyDictCode(
                     name: propertyName,
                     typeInfo: propertyTypeInfo,
                     description: propertyDescription
                 )
-                propertiesJSONCode.append(propertyJSON)
-                
-                // 构建属性字典（用于 parametersSchema）
-                let propertyDict = buildPropertyDict(
-                    name: propertyName,
-                    typeInfo: propertyTypeInfo,
-                    description: propertyDescription
-                )
-                propertiesDict[propertyName] = propertyDict
+                propertiesDictEntries.append(propertyDictCode)
             }
         }
         
-        let propertiesJSONString = propertiesJSONCode.joined(separator: ", ")
+        let propertiesDictString = propertiesDictEntries.isEmpty ? "[:]" : "[\(propertiesDictEntries.joined(separator: ", "))]"
         let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
-            \(propertiesJSONString.isEmpty ? "public static var toolProperties: String = \"\"" : "public static var toolProperties: String = #\"\(raw: propertiesJSONString)\"#")
+            public static var toolProperties: String {
+                let properties: [String: Any] = \(raw: propertiesDictString)
+                
+                if properties.isEmpty {
+                    return ""
+                }
+                
+                if let data = try? JSONSerialization.data(withJSONObject: properties),
+                   let jsonString = String(data: data, encoding: .utf8) {
+                    return jsonString
+                }
+                
+                return ""
+            }
             
             public static var parametersSchema: [String: Any] =[
                     "type": "object",
-                    "properties": \(raw: propertiesDict),
+                    "properties": \(raw: propertiesDictString),
                     "required": [\(raw: requiredString)],
                     "additionalProperties": false
             ]
@@ -203,83 +245,49 @@ public struct SYToolArgsMacro: ExtensionMacro {
     
     private struct PropertyTypeInfo {
         let type: String
-        let items: [String: Any]?
+        let items: ItemTypeInfo?
         let customTypeName: String?
     }
     
-    // JSON Schema 的 Codable 结构体
-    private struct PropertySchema: Codable {
+    private struct ItemTypeInfo {
         let type: String
-        let description: String?
-        let items: ItemsSchema?
-        
-        struct ItemsSchema: Codable {
-            let type: String
-        }
+        let customTypeName: String?
     }
     
-    private static func buildPropertyJSONString(
+    private static func buildPropertyDictCode(
         name: String,
         typeInfo: PropertyTypeInfo,
         description: String?
     ) -> String {
-        // 构建属性字典
-        var propertyDict: [String: Any] = ["type": typeInfo.type]
+        if let customType = typeInfo.customTypeName {
+            var schemaExpression = "\(customType).parametersSchema"
+            if let description = description {
+                schemaExpression = "\(schemaExpression).merging([\"description\": \"\(escapeSwiftString(description))\"]) { _, new in new }"
+            }
+            return "\"\(name)\": \(schemaExpression)"
+        }
+        
+        var propertyDictEntries: [String] = [
+            "\"type\": \"\(typeInfo.type)\""
+        ]
         
         if let description = description {
-            propertyDict["description"] = description
+            propertyDictEntries.append("\"description\": \"\(escapeSwiftString(description))\"")
         }
         
-        if let items = typeInfo.items, let itemType = items["type"] as? String {
-            propertyDict["items"] = ["type": itemType]
+        if let items = typeInfo.items {
+            if let customType = items.customTypeName {
+                propertyDictEntries.append("\"items\": \(customType).parametersSchema")
+            } else {
+                let itemEntries: [String] = [
+                    "\"type\": \"\(items.type)\""
+                ]
+                propertyDictEntries.append("\"items\": [\(itemEntries.joined(separator: ", "))]")
+            }
         }
         
-        // 如果是自定义对象类型，引用其 toolProperties
-        if typeInfo.type == "object", let customType = typeInfo.customTypeName {
-            propertyDict["properties"] = "{\(customType).toolProperties}"
-        }
-        
-        // 在宏编译阶段使用 JSONSerialization 生成 JSON 字符串
-        if let data = try? JSONSerialization.data(withJSONObject: propertyDict),
-           let jsonString = String(data: data, encoding: .utf8) {
-            return "\"\(name)\": \(jsonString)"
-        }
-        
-        return "\"\(name)\": {}"
-    }
-    
-    private static func buildPropertyDict(
-        name: String,
-        typeInfo: PropertyTypeInfo,
-        description: String?
-    ) -> [String: Any] {
-        // 构建属性字典
-        var propertyDict: [String: Any] = ["type": typeInfo.type]
-        
-        if let description = description {
-            propertyDict["description"] = description
-        }
-        
-        if let items = typeInfo.items, let itemType = items["type"] as? String {
-            propertyDict["items"] = ["type": itemType]
-        }
-        
-        // 如果是自定义对象类型，引用其 parametersSchema
-        if typeInfo.type == "object", let customType = typeInfo.customTypeName {
-            propertyDict["properties"] = "\(customType).parametersSchema[\"properties\"] as! [String: Any]"
-        }
-        
-        return propertyDict
-    }
-    
-    // 转义 JSON 字符串
-    private static func escapeJSONString(_ string: String) -> String {
-        return string
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
+        let propertyDictCode = "[\(propertyDictEntries.joined(separator: ", "))]"
+        return "\"\(name)\": \(propertyDictCode)"
     }
     
     // 转义 Swift 字符串字面量
@@ -302,8 +310,8 @@ public struct SYToolArgsMacro: ExtensionMacro {
         
         // 处理数组类型
         if let arrayType = type.as(ArrayTypeSyntax.self) {
-            let elementType = extractElementType(from: arrayType.element)
-            return PropertyTypeInfo(type: "array", items: ["type": elementType], customTypeName: nil)
+            let elementType = extractElementTypeInfo(from: arrayType.element)
+            return PropertyTypeInfo(type: "array", items: elementType, customTypeName: nil)
         }
         
         // 处理标识符类型（基本类型和自定义类型）
@@ -330,10 +338,10 @@ public struct SYToolArgsMacro: ExtensionMacro {
         return PropertyTypeInfo(type: "object", items: nil, customTypeName: type.trimmedDescription)
     }
     
-    private static func extractElementType(from type: TypeSyntax) -> String {
+    private static func extractElementTypeInfo(from type: TypeSyntax) -> ItemTypeInfo {
         // 递归处理可选类型
         if let optionalType = type.as(OptionalTypeSyntax.self) {
-            return extractElementType(from: optionalType.wrappedType)
+            return extractElementTypeInfo(from: optionalType.wrappedType)
         }
         
         // 处理标识符类型
@@ -342,20 +350,20 @@ public struct SYToolArgsMacro: ExtensionMacro {
             
             switch typeName {
             case "String":
-                return "string"
+                return ItemTypeInfo(type: "string", customTypeName: nil)
             case "Int", "Int8", "Int16", "Int32", "Int64", "UInt", "UInt8", "UInt16", "UInt32", "UInt64":
-                return "integer"
+                return ItemTypeInfo(type: "integer", customTypeName: nil)
             case "Double", "Float", "CGFloat":
-                return "number"
+                return ItemTypeInfo(type: "number", customTypeName: nil)
             case "Bool":
-                return "boolean"
+                return ItemTypeInfo(type: "boolean", customTypeName: nil)
             default:
-                return "object"
+                return ItemTypeInfo(type: "object", customTypeName: typeName)
             }
         }
         
         // 默认为 object
-        return "object"
+        return ItemTypeInfo(type: "object", customTypeName: nil)
     }
 }
 

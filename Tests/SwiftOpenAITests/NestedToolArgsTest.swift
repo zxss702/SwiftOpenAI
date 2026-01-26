@@ -16,15 +16,26 @@ nonisolated struct TestConfig: Codable {
     let value: String
 }
 
+@SYToolArgs
+enum A: Codable {
+    case asyn
+    case dd
+}
+
 // 测试嵌套对象类型处理
 @SYToolArgs
 nonisolated struct NestedObjectArgs: Codable {
     /// 配置对象
-    let config: TestConfig
+    let config: A
 }
 
 final class NestedToolArgsTest: XCTestCase {
 
+    func testOutPut() {
+        print(NestedObjectArgs.toolProperties)
+        print(NestedObjectArgs.parametersSchema)
+    }
+    
     func testArraySchema() {
         // 测试数组类型的schema生成
         let schema = SimpleArrayArgs.parametersSchema
