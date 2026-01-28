@@ -19,6 +19,7 @@ nonisolated public func sendMessage(
     user: String? = nil,
     stream: Bool = true,
     extraBody: [String: AnyCodableValue]? = nil,
+    extraHeaders: [String: String]? = nil,
     action: (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
     let actorHelper = OpenAISendMessageValueHelper()
@@ -30,7 +31,8 @@ nonisolated public func sendMessage(
         host: resolvedModelInfo.host,
         port: resolvedModelInfo.port,
         scheme: resolvedModelInfo.scheme,
-        basePath: resolvedModelInfo.basePath
+        basePath: resolvedModelInfo.basePath,
+        extraHeaders: extraHeaders
     )
     
     let openAI = OpenAI(configuration: configuration)

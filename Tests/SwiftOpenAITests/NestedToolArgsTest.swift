@@ -18,6 +18,7 @@ nonisolated struct TestConfig: Codable {
 
 @SYToolArgs
 enum A: Codable {
+    /// abcs
     case asyn
     case dd
 }

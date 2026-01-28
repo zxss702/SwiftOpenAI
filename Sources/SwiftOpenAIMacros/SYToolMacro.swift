@@ -123,6 +123,7 @@ public struct SYToolMacro: ExtensionMacro {
 enum SYToolArgsMacroDiagnostic: String, DiagnosticMessage {
     case requiresStructOrEnum = "@SYToolArgs can only be applied to a struct or an enum"
     case enumAssociatedValuesNotSupported = "@SYToolArgs does not support enums with associated values"
+    case enumRawTypeNotString = "@SYToolArgs enum raw type must be String or omitted"
 
     var message: String { rawValue }
     var diagnosticID: MessageID {
@@ -146,6 +147,11 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
         if let enumDecl = declaration.as(EnumDeclSyntax.self) {
             let enumDescription = enumDecl.extractDocumentationComment()
+            if enumDecl.hasNonStringRawType {
+                context.diagnose(
+                    Diagnostic(node: node, message: SYToolArgsMacroDiagnostic.enumRawTypeNotString))
+                return []
+            }
             let enumValues = enumDecl.memberBlock.members.compactMap { member -> String? in
                 if let enumCase = member.decl.as(EnumCaseDeclSyntax.self),
                    let element = enumCase.elements.first {
@@ -364,6 +370,33 @@ public struct SYToolArgsMacro: ExtensionMacro {
         
         // 默认为 object
         return ItemTypeInfo(type: "object", customTypeName: nil)
+    }
+}
+
+private extension EnumDeclSyntax {
+    var hasNonStringRawType: Bool {
+        guard let inheritanceClause else { return false }
+        let rawTypeNames = inheritanceClause.inheritedTypes.map { $0.type.trimmedDescription }
+        return rawTypeNames.contains(where: SYToolArgsMacro.isKnownNonStringRawType)
+    }
+}
+
+private extension SYToolArgsMacro {
+    static func isKnownNonStringRawType(_ typeName: String) -> Bool {
+        let nonStringRawTypes: Set<String> = [
+            "Int", "Int8", "Int16", "Int32", "Int64",
+            "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+            "Double", "Float", "CGFloat",
+            "Bool", "Character",
+            "Swift.Int", "Swift.Int8", "Swift.Int16", "Swift.Int32", "Swift.Int64",
+            "Swift.UInt", "Swift.UInt8", "Swift.UInt16", "Swift.UInt32", "Swift.UInt64",
+            "Swift.Double", "Swift.Float", "Swift.Bool", "Swift.Character",
+            "CoreGraphics.CGFloat"
+        ]
+        if typeName == "String" || typeName == "Swift.String" {
+            return false
+        }
+        return nonStringRawTypes.contains(typeName)
     }
 }
 

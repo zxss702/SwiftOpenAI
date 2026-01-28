@@ -103,6 +103,19 @@ public class OpenAI {
         if let organizationID = configuration.organizationID {
             request.setValue(organizationID, forHTTPHeaderField: "OpenAI-Organization")
         }
+
+        // Add default/custom headers (custom can override defaults)
+        var headers = configuration.extraHeaders ?? [:]
+        if headers["User-Agent"] == nil {
+            headers["User-Agent"] = OpenAIConfiguration.defaultUserAgent
+        }
+        if headers["X-Title"] == nil {
+            headers["X-Title"] = OpenAIConfiguration.defaultXTitle
+        }
+        
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         
         // 添加自定义extra_body支持
         var requestBody: [String: Any] = [:]
@@ -146,6 +159,7 @@ public struct OpenAIConfiguration {
     public let basePath: String?
     public let organizationID: String?
     public let extraBody: [String: Any]?
+    public let extraHeaders: [String: String]?
     
     public init(
         token: String,
@@ -154,7 +168,8 @@ public struct OpenAIConfiguration {
         scheme: String = "https",
         basePath: String? = nil,
         organizationID: String? = nil,
-        extraBody: [String: Any]? = nil
+        extraBody: [String: Any]? = nil,
+        extraHeaders: [String: String]? = nil
     ) {
         self.token = token
         self.host = host
@@ -163,6 +178,7 @@ public struct OpenAIConfiguration {
         self.basePath = basePath
         self.organizationID = organizationID
         self.extraBody = extraBody
+        self.extraHeaders = extraHeaders
     }
     
     public var baseURL: URL? {
@@ -180,6 +196,16 @@ public struct OpenAIConfiguration {
     public static let `default` = OpenAIConfiguration(
         token: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
     )
+
+    public static var defaultUserAgent: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        if let version, !version.isEmpty {
+            return "ShengYanCode/\(version)"
+        }
+        return "ShengYanCode"
+    }
+
+    public static let defaultXTitle = "ShengYanCode"
 }
 
 // MARK: - 聊天完成结果（非流式）
