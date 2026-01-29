@@ -49,6 +49,36 @@ extension ChatQuery.ChatCompletionMessageParam {
         )
     }
     
+    /// 创建带图片的用户消息
+    public static nonisolated func user(
+        _ text: String,
+        images: [Data],
+        detail: UserMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        name: String? = nil
+    ) -> Self {
+        return .user(
+            UserMessageParam(
+                content: .contentParts(
+                    images.map { imageData in
+                        UserMessageParam.Content.ContentPart.image(
+                            UserMessageParam.Content.ContentPart.ImageContent(
+                                imageUrl: UserMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                                    imageData: imageData,
+                                    detail: detail
+                                )
+                            )
+                        )
+                    } + [
+                        UserMessageParam.Content.ContentPart.text(
+                            UserMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                name: name
+            )
+        )
+    }
+    
     /// 创建只有图片的用户消息
     public static nonisolated func user(
         imageDatas: Data...,
