@@ -197,21 +197,61 @@ public struct SystemMessageParam: Codable {
 
 /// 助手消息参数
 ///
-/// 表示来自 AI 助手的回复消息。
+/// 表示来自 AI 助手的回复消息，支持文本内容、工具调用和推理内容。
+///
+/// 当使用 OpenAI 推理模型（如 o1、o3 系列）时，助手消息可能包含推理过程。
+/// 如果启用了 thinking 功能且消息包含工具调用，则必须提供 `reasoningContent`。
+///
+/// ## Topics
+///
+/// ### 属性
+/// - ``content``
+/// - ``name``
+/// - ``toolCalls``
+/// - ``reasoningContent``
+///
+/// ### 工具调用
+/// - ``ToolCallParam``
 public struct AssistantMessageParam: Codable {
+    
+    /// 消息的文本内容
     public let content: String?
+    
+    /// 消息的可选名称标识符
     public let name: String?
+    
+    /// 助手请求的工具调用列表
     public let toolCalls: [ToolCallParam]?
     
-    public init(content: String? = nil, name: String? = nil, toolCalls: [ToolCallParam]? = nil) {
+    /// 推理模型的思考过程内容
+    ///
+    /// 当使用 o1、o3 等推理模型并启用 thinking 功能时，
+    /// 此字段包含模型的内部推理过程。在多轮对话中，
+    /// 如果 assistant 消息包含工具调用，则此字段为必填。
+    public let reasoningContent: String?
+    
+    /// 创建助手消息参数
+    /// - Parameters:
+    ///   - content: 消息的文本内容
+    ///   - name: 消息的可选名称标识符
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - reasoningContent: 推理模型的思考过程内容
+    public init(
+        content: String? = nil,
+        name: String? = nil,
+        toolCalls: [ToolCallParam]? = nil,
+        reasoningContent: String? = nil
+    ) {
         self.content = content
         self.name = name
         self.toolCalls = toolCalls
+        self.reasoningContent = reasoningContent
     }
     
     private enum CodingKeys: String, CodingKey {
         case content, name
         case toolCalls = "tool_calls"
+        case reasoningContent = "reasoning_content"
     }
     
     /// 工具调用参数
