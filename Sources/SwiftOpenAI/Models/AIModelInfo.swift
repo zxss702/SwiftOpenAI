@@ -1,13 +1,38 @@
 import Foundation
 
+// MARK: - AI Model Info
+
+/// AI 模型配置信息
+///
+/// 封装 AI 模型的连接参数和标识信息。
 public struct AIModelInfoValue {
+    /// API 访问令牌
     public let token: String
+    
+    /// API 主机地址
     public let host: String
+    
+    /// API 端口号
     public let port: Int?
+    
+    /// URL 协议方案
     public let scheme: String
+    
+    /// API 基础路径
     public let basePath: String?
+    
+    /// 模型标识符
     public let modelID: String
     
+    /// 初始化 AI 模型配置
+    ///
+    /// - Parameters:
+    ///   - token: API 访问令牌
+    ///   - host: API 主机地址，默认为 "api.openai.com"
+    ///   - port: API 端口号，默认为 nil
+    ///   - scheme: URL 协议方案，默认为 "https"
+    ///   - basePath: API 基础路径，默认为 nil
+    ///   - modelID: 模型标识符，默认为 "gpt-4"
     public init(
         token: String,
         host: String = "api.openai.com",
@@ -24,6 +49,7 @@ public struct AIModelInfoValue {
         self.modelID = modelID
     }
     
+    /// 完整的 API 基础 URL
     public var baseURL: URL? {
         var components = URLComponents()
         components.scheme = scheme
@@ -37,15 +63,34 @@ public struct AIModelInfoValue {
     }
 }
 
+// MARK: - Errors
+
+/// OpenAI 错误类型
+///
+/// 定义 OpenAI API 操作中可能发生的各种错误。
 public enum OpenAIError: Error, LocalizedError {
+    /// 缺少模型 ID
     case missingModelID
+    
+    /// 无效的 URL
     case invalidURL
+    
+    /// 缺少 API 令牌
     case missingToken
+    
+    /// 网络错误
     case networkError(Error)
+    
+    /// 解码错误
     case decodingError(Error)
+    
+    /// 流式传输错误
     case streamingError(String)
+    
+    /// 无效的响应
     case invalidResponse(String)
     
+    /// 错误的本地化描述
     public var errorDescription: String? {
         switch self {
         case .missingModelID:

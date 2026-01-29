@@ -1,13 +1,23 @@
 import Foundation
 
 // MARK: - Type Aliases
+
+/// OpenAI 消息类型别名
 public typealias OpenAIMessage = ChatQuery.ChatCompletionMessageParam
+
+/// OpenAI 工具类型别名
 public typealias OpenAITool = ChatQuery.ChatCompletionToolParam
+
+/// OpenAI 函数定义类型别名
 public typealias OpenAIFunctionDefinition = ChatQuery.ChatCompletionToolParam.Function
 
 // MARK: - Message Parameter Types
 
 // MARK: - User Message
+
+/// 用户消息参数
+///
+/// 表示来自用户的输入消息，支持文本和图片内容。
 public struct UserMessageParam: Codable {
     public let content: Content
     public let name: String?
@@ -17,6 +27,7 @@ public struct UserMessageParam: Codable {
         self.name = name
     }
     
+    /// 消息内容
     public enum Content: Codable {
         case string(String)
         case contentParts([ContentPart])
@@ -40,6 +51,9 @@ public struct UserMessageParam: Codable {
             }
         }
         
+        /// 内容部分
+        ///
+        /// 可以是文本或图片。
         public enum ContentPart: Codable {
             case text(TextContent)
             case image(ImageContent)
@@ -74,6 +88,7 @@ public struct UserMessageParam: Codable {
                 case type
             }
             
+            /// 文本内容
             public struct TextContent: Codable {
                 public var type: String = "text"
                 public let text: String
@@ -83,6 +98,7 @@ public struct UserMessageParam: Codable {
                 }
             }
             
+            /// 图片内容
             public struct ImageContent: Codable {
                 public let type: String = "image_url"
                 public let imageUrl: ImageURL
@@ -96,6 +112,7 @@ public struct UserMessageParam: Codable {
                     case imageUrl = "image_url"
                 }
                 
+                /// 图片 URL 或 Base64 数据
                 public struct ImageURL: Codable {
                     public let url: String
                     public let detail: Detail
@@ -112,6 +129,7 @@ public struct UserMessageParam: Codable {
                         self.detail = detail
                     }
                     
+                    /// 检测图片 MIME 类型
                     private static func detectMimeType(from data: Data) -> String {
                         guard data.count >= 4 else { return "image/jpeg" }
                         
@@ -131,6 +149,7 @@ public struct UserMessageParam: Codable {
                         }
                     }
                     
+                    /// 图片细节级别
                     public enum Detail: String, Codable, CaseIterable {
                         case low
                         case high 
@@ -143,6 +162,10 @@ public struct UserMessageParam: Codable {
 }
 
 // MARK: - System Message
+
+/// 系统消息参数
+///
+/// 表示系统级指令消息。
 public struct SystemMessageParam: Codable {
     public let content: TextContent
     public let name: String?
@@ -171,6 +194,10 @@ public struct SystemMessageParam: Codable {
 }
 
 // MARK: - Assistant Message
+
+/// 助手消息参数
+///
+/// 表示来自 AI 助手的回复消息。
 public struct AssistantMessageParam: Codable {
     public let content: String?
     public let name: String?
@@ -187,6 +214,7 @@ public struct AssistantMessageParam: Codable {
         case toolCalls = "tool_calls"
     }
     
+    /// 工具调用参数
     public struct ToolCallParam: Codable {
         public let id: String
         public let type: String
@@ -211,6 +239,10 @@ public struct AssistantMessageParam: Codable {
 }
 
 // MARK: - Tool Message
+
+/// 工具消息参数
+///
+/// 表示工具执行结果的消息。
 public struct ToolMessageParam: Codable {
     public let content: Content
     public let toolCallId: String
@@ -350,7 +382,9 @@ public struct ToolMessageParam: Codable {
     }
 }
 
-// MARK: - ContentPartImageParam
+// MARK: - Content Part Image Param
+
+/// 图片内容部分参数
 public struct ContentPartImageParam: Codable {
     public let imageUrl: ImageURL
     

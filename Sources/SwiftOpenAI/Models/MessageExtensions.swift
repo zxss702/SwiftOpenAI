@@ -1,6 +1,7 @@
 import Foundation
 
-// MARK: - ChatCompletionMessageParam 便捷方法
+// MARK: - Message Construction Extensions
+
 extension ChatQuery.ChatCompletionMessageParam {
     
     // MARK: - User Messages
@@ -208,10 +209,14 @@ extension ChatQuery.ChatCompletionMessageParam {
     }
 }
 
-// MARK: - 便捷属性
+// MARK: - Message Properties
+
 extension ChatQuery.ChatCompletionMessageParam {
     
-    /// 获取消息内容（如果有的话）
+    /// 获取消息的文本内容
+    ///
+    /// 从消息中提取可读文本内容，支持所有消息类型。
+    /// 对于多部分内容，会连接所有文本部分。
     public var textContent: String? {
         switch self {
         case .system(let systemParam):
@@ -250,7 +255,9 @@ extension ChatQuery.ChatCompletionMessageParam {
         }
     }
     
-    /// 获取消息的名称（如果有的话）
+    /// 获取消息的名称
+    ///
+    /// 返回消息关联的名称字段（如果存在）。
     public var name: String? {
         switch self {
         case .system(let systemParam):
@@ -264,7 +271,9 @@ extension ChatQuery.ChatCompletionMessageParam {
         }
     }
     
-    /// 获取工具调用（如果是助手消息的话）
+    /// 获取工具调用列表
+    ///
+    /// 仅当消息为助手消息且包含工具调用时返回非 nil。
     public var toolCalls: [AssistantMessageParam.ToolCallParam]? {
         if case .assistant(let assistantParam) = self {
             return assistantParam.toolCalls
@@ -273,7 +282,9 @@ extension ChatQuery.ChatCompletionMessageParam {
     }
 }
 
-// MARK: - 数组便捷方法
+// MARK: - Array Convenience
+
+/// 消息数组便捷扩展
 extension Array where Element == ChatQuery.ChatCompletionMessageParam {
     
     /// 添加用户消息

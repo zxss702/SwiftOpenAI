@@ -1,5 +1,32 @@
 import Foundation
 
+/// 聊天查询参数
+///
+/// 封装发送给 OpenAI Chat Completions API 的所有参数。
+///
+/// ## Topics
+///
+/// ### 初始化
+/// - ``init(messages:model:frequencyPenalty:maxCompletionTokens:n:parallelToolCalls:prediction:presencePenalty:responseFormat:stop:temperature:toolChoice:tools:topP:user:stream:extraBody:)``
+///
+/// ### 消息相关
+/// - ``messages``
+/// - ``ChatCompletionMessageParam``
+///
+/// ### 模型配置
+/// - ``model``
+/// - ``temperature``
+/// - ``topP``
+///
+/// ### Token 限制
+/// - ``maxCompletionTokens``
+/// - ``n``
+///
+/// ### 工具调用
+/// - ``tools``
+/// - ``toolChoice``
+/// - ``ChatCompletionToolParam``
+///
 public struct ChatQuery: Codable {
     public let messages: [ChatCompletionMessageParam]
     public let model: String
@@ -59,6 +86,9 @@ public struct ChatQuery: Codable {
     
     // MARK: - Nested Types
     
+    /// 停止序列
+    ///
+    /// 可以是单个字符串或字符串数组。
     public enum Stop: Codable {
         case string(String)
         case array([String])
@@ -83,6 +113,7 @@ public struct ChatQuery: Codable {
         }
     }
     
+    /// 预测输出配置
     public struct PredictedOutputConfig: Codable {
         public let type: String
         public let content: String?
@@ -93,6 +124,9 @@ public struct ChatQuery: Codable {
         }
     }
     
+    /// 响应格式配置
+    ///
+    /// 用于指定 JSON Schema 等结构化输出格式。
     public struct ResponseFormat: Codable {
         public let type: String
         public let jsonSchema: JSONSchema?
@@ -102,6 +136,7 @@ public struct ChatQuery: Codable {
             self.jsonSchema = jsonSchema
         }
         
+        /// JSON Schema 定义
         public struct JSONSchema: Codable {
             public let name: String
             public let description: String?
@@ -115,6 +150,9 @@ public struct ChatQuery: Codable {
         }
     }
     
+    /// 聊天消息参数
+    ///
+    /// 支持系统、用户、助手和工具四种消息类型。
     public enum ChatCompletionMessageParam: Codable {
         case system(SystemMessageParam)
         case user(UserMessageParam)
@@ -230,6 +268,9 @@ public struct ChatQuery: Codable {
         }
     }
     
+    /// 聊天工具参数
+    ///
+    /// 定义可供模型调用的函数工具。
     public struct ChatCompletionToolParam: Codable {
         public let type: String
         public let function: Function
@@ -239,6 +280,7 @@ public struct ChatQuery: Codable {
             self.function = function
         }
         
+        /// 函数定义
         public struct Function: Codable {
             public let name: String
             public let description: String?
@@ -250,7 +292,9 @@ public struct ChatQuery: Codable {
                 self.parameters = parameters.map { ParametersContainer($0) }
             }
             
-            // 包装器类型来处理 [String: Any]
+            /// 参数容器
+            ///
+            /// 用于处理 `[String: Any]` 类型的参数字典。
             public struct ParametersContainer: Codable, CustomStringConvertible {
                 private let data: [String: AnyCodableValue]
                 
@@ -266,11 +310,12 @@ public struct ChatQuery: Codable {
                     data = try [String: AnyCodableValue](from: decoder)
                 }
                 
+                /// 转换为字典
                 public func toDictionary() -> [String: Any] {
                     return data.mapValues { $0.anyValue }
                 }
                 
-                // 为测试提供便利方法
+                /// 转换为 JSON 字符串
                 public func toJSONString() -> String? {
                     do {
                         let dict = toDictionary()
@@ -289,6 +334,9 @@ public struct ChatQuery: Codable {
         }
     }
     
+    /// 函数调用选项参数
+    ///
+    /// 控制模型如何选择要调用的函数。
     public enum ChatCompletionFunctionCallOptionParam: Codable {
         case none
         case auto
@@ -329,7 +377,9 @@ public struct ChatQuery: Codable {
     }
 }
 
-// MARK: - AnyCodingKey helper
+// MARK: - Coding Helpers
+
+/// 通用编码键
 struct AnyCodingKey: CodingKey {
     var stringValue: String
     var intValue: Int?
@@ -344,7 +394,11 @@ struct AnyCodingKey: CodingKey {
     }
 }
 
-// MARK: - AnyCodableValue helper
+// MARK: - Any Codable Value
+
+/// 可编码的任意值
+///
+/// 支持动态类型的 JSON 编解码。
 public enum AnyCodableValue: Codable {
     case string(String)
     case int(Int)
@@ -354,7 +408,10 @@ public enum AnyCodableValue: Codable {
     case object([String: AnyCodableValue])
     case null
     
-    // 从Any创建AnyCodableValue
+    /// 从 Any 类型创建
+    ///
+    /// - Parameter value: 任意 Swift 值
+    /// - Returns: 对应的 AnyCodableValue
     public static func from(_ value: Any) -> AnyCodableValue {
         if let string = value as? String {
             return .string(string)
@@ -373,7 +430,7 @@ public enum AnyCodableValue: Codable {
         }
     }
     
-    // 转换回Any
+    /// 转换为 Any 类型
     public var anyValue: Any {
         switch self {
         case .string(let string):
@@ -436,5 +493,4 @@ public enum AnyCodableValue: Codable {
         }
     }
     
-    // 删除重复的anyValue方法，已经在上面定义过了
 }
