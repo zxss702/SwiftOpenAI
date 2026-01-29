@@ -159,7 +159,7 @@ public struct ChatQuery: Codable {
         case assistant(AssistantMessageParam)
         case tool(ToolMessageParam)
         
-        public init?(role: Role, content: String?, name: String? = nil, toolCalls: [AssistantMessageParam.ToolCallParam]? = nil, toolCallId: String? = nil) {
+        public init?(role: Role, content: String?, name: String? = nil, toolCalls: [AssistantMessageParam.ToolCallParam]? = nil, toolCallId: String? = nil, reasoningContent: String? = nil) {
             switch role {
             case .system:
                 guard let content = content else { return nil }
@@ -168,7 +168,7 @@ public struct ChatQuery: Codable {
                 guard let content = content else { return nil }
                 self = .user(UserMessageParam(content: .string(content), name: name))
             case .assistant:
-                self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls))
+                self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls, reasoningContent: reasoningContent))
             case .tool:
                 guard let content = content, let toolCallId = toolCallId else { return nil }
                 self = .tool(ToolMessageParam(content: .textContent(content), toolCallId: toolCallId))
@@ -190,7 +190,7 @@ public struct ChatQuery: Codable {
         
         // MARK: - Codable Implementation
         private enum CodingKeys: String, CodingKey {
-            case role, content, name, toolCalls = "tool_calls", toolCallId = "tool_call_id"
+            case role, content, name, toolCalls = "tool_calls", toolCallId = "tool_call_id", reasoningContent = "reasoning_content"
         }
         
         public init(from decoder: Decoder) throws {
@@ -222,7 +222,8 @@ public struct ChatQuery: Codable {
                 let content = try container.decodeIfPresent(String.self, forKey: .content)
                 let name = try container.decodeIfPresent(String.self, forKey: .name)
                 let toolCalls = try container.decodeIfPresent([AssistantMessageParam.ToolCallParam].self, forKey: .toolCalls)
-                self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls))
+                let reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent)
+                self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls, reasoningContent: reasoningContent))
                 
             case .tool:
                 let toolCallId = try container.decode(String.self, forKey: .toolCallId)
@@ -259,6 +260,7 @@ public struct ChatQuery: Codable {
                 try container.encodeIfPresent(assistantParam.content, forKey: .content)
                 try container.encodeIfPresent(assistantParam.name, forKey: .name)
                 try container.encodeIfPresent(assistantParam.toolCalls, forKey: .toolCalls)
+                try container.encodeIfPresent(assistantParam.reasoningContent, forKey: .reasoningContent)
                 
             case .tool(let toolParam):
                 try container.encode(Role.tool, forKey: .role)
