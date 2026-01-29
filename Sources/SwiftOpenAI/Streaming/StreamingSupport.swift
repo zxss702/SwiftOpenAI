@@ -1,6 +1,45 @@
 import Foundation
 
-/// 发送消息的主函数，提供与MacPaw OpenAI相似的使用方式（支持直接传入工具对象）
+/// 发送聊天消息（流式）
+///
+/// 提供简化的流式聊天接口，自动处理流式响应并提供增量回调。
+///
+/// - Parameters:
+///   - modelInfo: AI 模型配置信息
+///   - messages: 对话消息列表
+///   - frequencyPenalty: 频率惩罚系数（-2.0 到 2.0）
+///   - maxCompletionTokens: 最大生成 token 数
+///   - n: 生成的完成数量
+///   - parallelToolCalls: 是否允许并行工具调用
+///   - prediction: 预测输出配置
+///   - presencePenalty: 存在惩罚系数（-2.0 到 2.0）
+///   - responseFormat: 响应格式配置
+///   - stop: 停止词
+///   - temperature: 温度参数（0.0 到 2.0），默认为 0.6
+///   - toolChoice: 工具选择策略
+///   - tools: 可用工具列表（支持直接传入工具对象）
+///   - topP: nucleus sampling 参数
+///   - user: 终端用户标识符
+///   - stream: 是否使用流式传输，默认为 true
+///   - extraBody: 额外的请求体参数
+///   - extraHeaders: 额外的 HTTP 请求头
+///   - action: 流式结果回调闭包
+///
+/// - Returns: 最终的聊天结果
+/// - Throws: 如果请求失败或被取消
+///
+/// ## Example
+///
+/// ```swift
+/// let result = try await sendMessage(
+///     modelInfo: modelInfo,
+///     messages: [.user("你好")],
+///     tools: [MyTool.self]
+/// ) { streamResult in
+///     print(streamResult.subText)
+/// }
+/// print(result.fullText)
+/// ```
 nonisolated public func sendMessage(
     modelInfo: AIModelInfoValue,
     messages: [ChatQuery.ChatCompletionMessageParam],
@@ -14,7 +53,7 @@ nonisolated public func sendMessage(
     stop: ChatQuery.Stop? = nil,
     temperature: Double? = 0.6,
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam? = nil,
-    tools: [any OpenAIToolConvertible]? = nil,  // 🆕 直接支持工具对象
+    tools: [any OpenAIToolConvertible]? = nil,
     topP: Double? = nil,
     user: String? = nil,
     stream: Bool = true,
@@ -25,7 +64,6 @@ nonisolated public func sendMessage(
     let actorHelper = OpenAISendMessageValueHelper()
     let resolvedModelInfo = modelInfo
     
-    // 创建OpenAI配置
     let configuration = OpenAIConfiguration(
         token: resolvedModelInfo.token,
         host: resolvedModelInfo.host,
@@ -37,7 +75,6 @@ nonisolated public func sendMessage(
     
     let openAI = OpenAI(configuration: configuration)
     
-    // 创建查询
     let query = ChatQuery(
         messages: messages,
         model: resolvedModelInfo.modelID,
@@ -51,14 +88,13 @@ nonisolated public func sendMessage(
         stop: stop,
         temperature: temperature,
         toolChoice: toolChoice,
-        tools: tools?.map { $0.asChatCompletionTool }, // 自动转换工具对象为ChatCompletionToolParam
+        tools: tools?.map { $0.asChatCompletionTool },
         topP: topP,
         user: user,
         stream: stream,
         extraBody: extraBody
     )
     
-    // 处理流式响应
     for try await result in openAI.chatsStream(query: query) {
         try Task.checkCancellation()
         
@@ -71,7 +107,6 @@ nonisolated public func sendMessage(
             if let toolCalls = choice.delta.toolCalls {
                 for call in toolCalls {
                     if let index = await actorHelper.allToolCalls.firstIndex(where: { $0.index == call.index }) {
-                        // 更新已存在的tool call
                         let existingCall = await actorHelper.allToolCalls[index]
                         let updatedCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
                             index: existingCall.index,
@@ -84,13 +119,11 @@ nonisolated public func sendMessage(
                         )
                         await actorHelper.setAllToolCalls(index: index, call: updatedCall)
                     } else {
-                        // 添加新的tool call
                         await actorHelper.appendAllToolCalls(call)
                     }
                 }
             }
             
-            // 调用用户提供的action回调
             try await action(OpenAIChatStreamResult(
                 subThinkingText: choice.delta.reasoning ?? "",
                 subText: choice.delta.content ?? "",
@@ -102,10 +135,8 @@ nonisolated public func sendMessage(
         }
     }
     
-    // 设置完成状态
     await actorHelper.setState(.text)
     
-    // 返回最终结果
     return await OpenAIChatResult(
         fullThinkingText: actorHelper.fullThinkingText,
         fullText: actorHelper.fullText,
