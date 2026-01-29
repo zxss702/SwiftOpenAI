@@ -162,16 +162,25 @@ extension ChatQuery.ChatCompletionMessageParam {
     // MARK: - Assistant Messages
     
     /// 创建助手消息
+    ///
+    /// - Parameters:
+    ///   - text: 消息的文本内容
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - name: 消息的可选名称标识符
+    ///   - reasoningContent: 推理模型的思考过程内容（用于 o1/o3 等模型）
+    /// - Returns: 配置好的助手消息
     public static nonisolated func assistant(
         _ text: String,
         toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
-        name: String? = nil
+        name: String? = nil,
+        reasoningContent: String? = nil
     ) -> Self {
         return .assistant(
             AssistantMessageParam(
                 content: text,
                 name: name,
-                toolCalls: (toolCalls?.isEmpty ?? true) ? nil : toolCalls
+                toolCalls: (toolCalls?.isEmpty ?? true) ? nil : toolCalls,
+                reasoningContent: reasoningContent
             )
         )
     }
@@ -195,15 +204,50 @@ extension ChatQuery.ChatCompletionMessageParam {
         return .assistant(text)
     }
     
-    /// 创建工具调用消息
+    /// 创建仅包含工具调用的助手消息
+    ///
+    /// 当助手响应只需要调用工具而不返回文本内容时使用此方法。
+    ///
+    /// - Parameters:
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - reasoningContent: 推理模型的思考过程内容（用于 o1/o3 等模型）
+    /// - Returns: 配置好的助手消息
     public static nonisolated func assistantWithToolCalls(
-        _ toolCalls: [AssistantMessageParam.ToolCallParam]
+        _ toolCalls: [AssistantMessageParam.ToolCallParam],
+        reasoningContent: String? = nil
     ) -> Self {
         return .assistant(
             AssistantMessageParam(
                 content: nil,
                 name: nil,
-                toolCalls: toolCalls
+                toolCalls: toolCalls,
+                reasoningContent: reasoningContent
+            )
+        )
+    }
+    
+    /// 创建带推理内容的助手消息
+    ///
+    /// 专门用于 o1、o3 等推理模型，当需要在历史消息中保留推理过程时使用。
+    ///
+    /// - Parameters:
+    ///   - text: 消息的文本内容
+    ///   - reasoningContent: 推理模型的思考过程内容
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - name: 消息的可选名称标识符
+    /// - Returns: 配置好的助手消息
+    public static nonisolated func assistantWithReasoning(
+        _ text: String,
+        reasoningContent: String,
+        toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
+        name: String? = nil
+    ) -> Self {
+        return .assistant(
+            AssistantMessageParam(
+                content: text,
+                name: name,
+                toolCalls: (toolCalls?.isEmpty ?? true) ? nil : toolCalls,
+                reasoningContent: reasoningContent
             )
         )
     }
@@ -271,12 +315,25 @@ extension ChatQuery.ChatCompletionMessageParam {
         }
     }
     
-    /// 获取工具调用列表
+    /// 助手消息中的工具调用列表
     ///
-    /// 仅当消息为助手消息且包含工具调用时返回非 nil。
+    /// 仅当消息类型为 `assistant` 且包含工具调用时返回非空值。
+    /// 对于其他消息类型，始终返回 `nil`。
     public var toolCalls: [AssistantMessageParam.ToolCallParam]? {
         if case .assistant(let assistantParam) = self {
             return assistantParam.toolCalls
+        }
+        return nil
+    }
+    
+    /// 助手消息中的推理内容
+    ///
+    /// 仅当消息类型为 `assistant` 且包含推理内容时返回非空值。
+    /// 此字段用于 o1、o3 等推理模型的 thinking 功能。
+    /// 对于其他消息类型，始终返回 `nil`。
+    public var reasoningContent: String? {
+        if case .assistant(let assistantParam) = self {
+            return assistantParam.reasoningContent
         }
         return nil
     }
@@ -297,9 +354,38 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
         self.append(.system(text, name: name))
     }
     
-    /// 添加助手消息
-    public mutating func addAssistantMessage(_ text: String, toolCalls: [AssistantMessageParam.ToolCallParam]? = nil, name: String? = nil) {
-        self.append(.assistant(text, toolCalls: toolCalls, name: name))
+    /// 添加助手消息到数组
+    ///
+    /// - Parameters:
+    ///   - text: 消息的文本内容
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - name: 消息的可选名称标识符
+    ///   - reasoningContent: 推理模型的思考过程内容（用于 o1/o3 等模型）
+    public mutating func addAssistantMessage(
+        _ text: String,
+        toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
+        name: String? = nil,
+        reasoningContent: String? = nil
+    ) {
+        self.append(.assistant(text, toolCalls: toolCalls, name: name, reasoningContent: reasoningContent))
+    }
+    
+    /// 添加带推理内容的助手消息到数组
+    ///
+    /// 专门用于 o1、o3 等推理模型，当需要在历史消息中保留推理过程时使用。
+    ///
+    /// - Parameters:
+    ///   - text: 消息的文本内容
+    ///   - reasoningContent: 推理模型的思考过程内容
+    ///   - toolCalls: 助手请求的工具调用列表
+    ///   - name: 消息的可选名称标识符
+    public mutating func addAssistantMessageWithReasoning(
+        _ text: String,
+        reasoningContent: String,
+        toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
+        name: String? = nil
+    ) {
+        self.append(.assistantWithReasoning(text, reasoningContent: reasoningContent, toolCalls: toolCalls, name: name))
     }
     
     /// 添加工具响应消息
