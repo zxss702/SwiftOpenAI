@@ -33,6 +33,9 @@ public actor OpenAISendMessageValueHelper {
     /// 所有工具调用列表
     public var allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall] = []
     
+    /// Token 使用统计信息
+    public var usage: ChatStreamResult.Choice.UsageInfo?
+    
     public init() {}
     
     /// 设置文本内容并更新状态
@@ -75,11 +78,19 @@ public actor OpenAISendMessageValueHelper {
         allToolCalls.append(call)
     }
     
+    /// 设置 Token 使用统计信息
+    ///
+    /// - Parameter newUsage: 新的使用统计信息
+    public func setUsage(_ newUsage: ChatStreamResult.Choice.UsageInfo?) {
+        usage = newUsage
+    }
+    
     /// 重置所有状态
     public func reset() {
         fullThinkingText = ""
         fullText = ""
         state = .wait
         allToolCalls = []
+        usage = nil
     }
 }

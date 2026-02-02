@@ -89,15 +89,20 @@ public struct OpenAIChatResult {
     /// 所有工具调用列表
     public let allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall]
     
+    /// Token 使用统计信息
+    public let usage: ChatStreamResult.Choice.UsageInfo?
+    
     public init(
         fullThinkingText: String,
         fullText: String,
         state: OpenAIChatStreamResultState,
-        allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall]
+        allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall],
+        usage: ChatStreamResult.Choice.UsageInfo? = nil
     ) {
         self.fullThinkingText = fullThinkingText
         self.fullText = fullText
         self.state = state
         self.allToolCalls = allToolCalls
+        self.usage = usage
     }
 }

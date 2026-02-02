@@ -98,6 +98,11 @@ nonisolated public func sendMessage(
     for try await result in openAI.chatsStream(query: query) {
         try Task.checkCancellation()
         
+        // 捕获 usage 信息（通常在最后一个 chunk 中返回）
+        if let usage = result.choices.first?.usage {
+            await actorHelper.setUsage(usage)
+        }
+        
         if let choice = result.choices.first {
             await actorHelper.setText(
                 thinkingText: choice.delta.reasoning ?? "",
@@ -141,6 +146,7 @@ nonisolated public func sendMessage(
         fullThinkingText: actorHelper.fullThinkingText,
         fullText: actorHelper.fullText,
         state: actorHelper.state,
-        allToolCalls: actorHelper.allToolCalls
+        allToolCalls: actorHelper.allToolCalls,
+        usage: await actorHelper.usage
     )
 }
