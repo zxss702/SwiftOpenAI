@@ -72,7 +72,7 @@ public class OpenAI {
                     }
                     
                     for try await line in bytes.lines {
-                        guard !line.isEmpty else { continue }
+                        guard !line.isEmpty, !line.hasPrefix(":") else { continue }
                         
                         let dataString = line.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespaces)
                         
