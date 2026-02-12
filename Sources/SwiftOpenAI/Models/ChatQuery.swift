@@ -153,7 +153,7 @@ public struct ChatQuery: Codable {
     /// 聊天消息参数
     ///
     /// 支持系统、用户、助手和工具四种消息类型。
-    public enum ChatCompletionMessageParam: Codable {
+    public enum ChatCompletionMessageParam: Codable, Sendable {
         case system(SystemMessageParam)
         case user(UserMessageParam)
         case assistant(AssistantMessageParam)
