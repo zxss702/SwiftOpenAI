@@ -82,7 +82,7 @@ public class OpenAI {
                         }
                         
                         let data = Data(dataString.utf8)
-                        let streamResult = try JSONDecoder().decode(ChatStreamResult.self, from: data)
+                        let streamResult = try! JSONDecoder().decode(ChatStreamResult.self, from: data)
                         continuation.yield(streamResult)
                     }
                     continuation.finish()
