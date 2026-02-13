@@ -34,7 +34,7 @@ public enum OpenAIChatStreamResultState: String, Codable, CaseIterable, Sendable
 ///
 /// 封装流式聊天的增量和累积结果，
 /// 包含思考过程和实际输出内容。
-public struct OpenAIChatStreamResult {
+public struct OpenAIChatStreamResult: Sendable {
     /// 本次增量的思考文本
     public let subThinkingText: String
     
@@ -76,7 +76,7 @@ public struct OpenAIChatStreamResult {
 ///
 /// 表示聊天完成后的最终结果，
 /// 包含完整的思考过程和输出内容。
-public struct OpenAIChatResult {
+public struct OpenAIChatResult: Sendable {
     /// 完整的思考文本
     public let fullThinkingText: String
     
