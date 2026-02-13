@@ -48,7 +48,7 @@ final class SiliconFlowAPITests: XCTestCase {
     
     // MARK: - API Configuration
     
-    private let apiToken = "sk-kpngzvretmduoipepixnzwbwtsjqahkggcfdqzcjfgwajgwr"
+    private let apiToken = "test-token"
     private let modelName = "Qwen/Qwen3-8B"
     private let apiHost = "api.siliconflow.cn"
     private let apiPath = "/v1"

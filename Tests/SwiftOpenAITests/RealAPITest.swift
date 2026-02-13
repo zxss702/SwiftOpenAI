@@ -54,13 +54,12 @@ public struct APITestResult {
     let timestamp: Int
 }
 
-/// 真实API测试 - 需要网络连接
-/// 这个测试会使用真实的SiliconFlow API进行测试
+/// SiliconFlow 兼容性离线测试
 class RealAPITest: XCTestCase {
     
     // MARK: - Configuration
     
-    private let apiToken = "sk-kpngzvretmduoipepixnzwbwtsjqahkggcfdqzcjfgwajgwr" 
+    private let apiToken = "test-token"
     private let modelName = "Qwen/Qwen3-8B"
     private let apiHost = "api.siliconflow.cn"
     
@@ -79,7 +78,6 @@ class RealAPITest: XCTestCase {
     
     override func setUp() {
         super.setUp()
-        // 设置更长的超时时间用于网络请求
         continueAfterFailure = false
     }
     
@@ -381,7 +379,6 @@ class RealAPITest: XCTestCase {
         print(separator)
         print("📡 API地址: https://\(apiHost)/v1")
         print("🤖 模型: \(modelName)")
-        print("🔑 Token: \(apiToken.prefix(20))...")
         print("✅ 基础配置: 通过")
         print("✅ 消息构建: 通过") 
         print("✅ 工具定义: 通过")
@@ -457,84 +454,6 @@ class RealAPITest: XCTestCase {
         } catch {
             print("❌ ChatQuery编码失败: \(error)")
             XCTFail("ChatQuery编码失败: \(error)")
-        }
-    }
-    
-    func testSendMessage() async throws {
-//        let messages: [OpenAIMessage] = [
-//            .user("计算6+8 = 几")
-//        ]
-//        
-//        print("=== 测试不带工具的API调用 ===")
-//        let result1 = try await sendMessage(
-//            modelInfo: AIModelInfoValue(token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", host: "api.siliconflow.cn", basePath: "/v1", modelID: "Qwen/Qwen3-8B"),
-//            messages: messages
-//        ) { result in
-//            print(result.subThinkingText, terminator: "")
-//            print(result.subText, terminator: "")
-//        }
-//        print("✅ 不带工具的API调用成功: \(result1.fullText)")
-        
-        print("\n=== 测试简化的工具语法 (使用 Qwen/Qwen3-8B) ===")
-        let modelInfo = AIModelInfoValue(
-            token: "sk-cqnpctsiskiipuzqrjaasoqcoudffgxzrapjdicjkgharojn", 
-            host: "api.siliconflow.cn", 
-            basePath: "/v1", 
-            modelID: "Qwen/Qwen3-8B"
-        )
-        
-        // 先检查工具定义是否正确
-        let tool = TestCalculatorTool()
-        let chatTool = tool.asChatCompletionTool
-        print("🔧 工具检查:")
-        print("  名称: \(chatTool.function.name)")
-        print("  描述: \(chatTool.function.description ?? "无")")
-        print("  参数类型: \(chatTool.type)")
-        print("  参数JSON: \(chatTool.function.parameters?.description ?? "无")")
-        
-        // 构建完整请求并打印
-        let messages2: [OpenAIMessage] = [
-            .user("使用工具计算6+8 = 几")
-        ]
-        
-        let chatQuery = ChatQuery(
-            messages: messages2,
-            model: "Qwen/Qwen3-8B",
-            tools: [chatTool]
-        )
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let jsonData = try encoder.encode(chatQuery)
-            let jsonString = String(data: jsonData, encoding: .utf8) ?? "编码失败"
-            print("\n📋 完整请求JSON:")
-            print(jsonString)
-        } catch {
-            print("❌ 请求JSON编码失败: \(error)")
-        }
-        
-        do {
-            print("\n🎯 使用新的简化工具语法:")
-            let result2 = try await sendMessage(
-                modelInfo: modelInfo,
-                messages: messages2,
-                temperature: 0.1,
-                tools: [tool]  // 🆕 直接传入工具对象，无需 .asChatCompletionTool
-            ) { result in
-                print(result.subThinkingText, terminator: "")
-                print(result.subText, terminator: "")
-                
-                // 显示工具调用信息
-                for toolCall in result.allToolCalls {
-                    print("🔧 工具调用: \(toolCall.function?.name ?? "unknown")")
-                    print("📋 参数: \(toolCall.function?.arguments ?? "none")")
-                }
-            }
-            print("✅ 简化工具语法调用成功: \(result2.fullText)")
-        } catch {
-            print("❌ 带工具的API调用失败: \(error)")
-            // 不要抛出错误，让测试继续执行以查看日志
         }
     }
 }

@@ -54,6 +54,5 @@ func exampleUsage() {
     
     // 打印生成的 parametersSchema
     print("CreateUserArgs.parametersSchema:")
-    print(CreateUserArgs.parametersSchema)
+    print(CreateUserArgs.parametersSchema.toAnyDictionary())
 }
-

@@ -253,7 +253,7 @@ final class ExtendedFeaturesTests: XCTestCase {
     }
     
     func testToolArgsSchemaGeneration() throws {
-        let schema = ComplexToolArgs.parametersSchema
+        let schema = ComplexToolArgs.parametersSchema.toAnyDictionary()
         
         XCTAssertFalse(schema.isEmpty)
         
@@ -458,7 +458,7 @@ final class ExtendedFeaturesTests: XCTestCase {
     
     func testSYToolArgsDocumentationExtraction() throws {
         // 测试 SYToolArgs 宏是否能正确提取属性的文档注释
-        let schema = TestEditToolArgs.parametersSchema
+        let schema = TestEditToolArgs.parametersSchema.toAnyDictionary()
         
         // 验证基本结构
         XCTAssertEqual(schema["type"] as? String, "object")

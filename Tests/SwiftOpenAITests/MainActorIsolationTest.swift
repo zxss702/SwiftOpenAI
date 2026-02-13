@@ -61,20 +61,16 @@ final class MainActorIsolationTest: XCTestCase {
     
     func testToolParametersSchema() throws {
         // 测试参数 schema 生成
-        let testSchema = TestArgs.parametersSchema
-        let forewordSchema = 前言.parametersSchema
+        let testSchema = TestArgs.parametersSchema.toAnyDictionary()
+        let forewordSchema = 前言.parametersSchema.toAnyDictionary()
         
         XCTAssertNotNil(testSchema)
         XCTAssertNotNil(forewordSchema)
         
         // 验证 schema 结构
-        if let testDict = testSchema as? [String: Any] {
-            XCTAssertEqual(testDict["type"] as? String, "object")
-        }
+        XCTAssertEqual(testSchema["type"] as? String, "object")
         
-        if let forewordDict = forewordSchema as? [String: Any] {
-            XCTAssertEqual(forewordDict["type"] as? String, "object")
-        }
+        XCTAssertEqual(forewordSchema["type"] as? String, "object")
     }
     
     func testNonisolatedProtocolConformance() throws {

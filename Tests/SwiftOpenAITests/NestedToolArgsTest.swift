@@ -34,12 +34,12 @@ final class NestedToolArgsTest: XCTestCase {
 
     func testOutPut() {
         print(NestedObjectArgs.toolProperties)
-        print(NestedObjectArgs.parametersSchema)
+        print(NestedObjectArgs.parametersSchema.toAnyDictionary())
     }
     
     func testArraySchema() {
         // 测试数组类型的schema生成
-        let schema = SimpleArrayArgs.parametersSchema
+        let schema = SimpleArrayArgs.parametersSchema.toAnyDictionary()
 
         print("=== SimpleArrayArgs Schema ===")
         print(schema)
@@ -69,7 +69,7 @@ final class NestedToolArgsTest: XCTestCase {
 
     func testNestedObjectSchema() {
         // 测试嵌套对象的schema生成
-        let schema = NestedObjectArgs.parametersSchema
+        let schema = NestedObjectArgs.parametersSchema.toAnyDictionary()
 
         print("\n=== NestedObjectArgs Schema ===")
         print(schema)
@@ -82,17 +82,18 @@ final class NestedToolArgsTest: XCTestCase {
             XCTAssertNotNil(properties["config"])
 
             if let configProperty = properties["config"] as? [String: Any] {
-                XCTAssertEqual(configProperty["type"] as? String, "object")
+                XCTAssertEqual(configProperty["type"] as? String, "string")
                 XCTAssertNotNil(configProperty["description"])
+                XCTAssertEqual(configProperty["enum"] as? [String], ["asyn", "dd"])
             }
         }
     }
 
     func testIndividualSchemas() {
         // 分别测试每个类型的schema
-        let simpleSchema = SimpleArrayArgs.parametersSchema
-        let nestedSchema = NestedObjectArgs.parametersSchema
-        let configSchema = TestConfig.parametersSchema
+        let simpleSchema = SimpleArrayArgs.parametersSchema.toAnyDictionary()
+        let nestedSchema = NestedObjectArgs.parametersSchema.toAnyDictionary()
+        let configSchema = TestConfig.parametersSchema.toAnyDictionary()
 
         print("\n=== TestConfig Schema ===")
         print(configSchema)
@@ -138,28 +139,14 @@ final class NestedToolArgsTest: XCTestCase {
     }
     
     func testNestedObjectPropertiesStructure() {
-        // 深入测试嵌套对象的 properties 结构
-        let schema = NestedObjectArgs.parametersSchema
+        // 深入测试嵌套枚举对象的结构
+        let schema = NestedObjectArgs.parametersSchema.toAnyDictionary()
         
         if let properties = schema["properties"] as? [String: Any],
            let configProperty = properties["config"] as? [String: Any] {
             
-            // 验证 config 属性包含 properties 字段（嵌套属性）
-            XCTAssertNotNil(configProperty["properties"], "嵌套对象应该包含 properties 字段")
-            
-            if let configProps = configProperty["properties"] as? [String: Any] {
-                // 验证嵌套对象的内部属性
-                XCTAssertNotNil(configProps["enabled"], "应该包含 enabled 属性")
-                XCTAssertNotNil(configProps["value"], "应该包含 value 属性")
-                
-                if let enabledProp = configProps["enabled"] as? [String: Any] {
-                    XCTAssertEqual(enabledProp["type"] as? String, "boolean")
-                }
-                
-                if let valueProp = configProps["value"] as? [String: Any] {
-                    XCTAssertEqual(valueProp["type"] as? String, "string")
-                }
-            }
+            XCTAssertEqual(configProperty["type"] as? String, "string")
+            XCTAssertEqual(configProperty["enum"] as? [String], ["asyn", "dd"])
         } else {
             XCTFail("未能正确解析嵌套对象的结构")
         }
