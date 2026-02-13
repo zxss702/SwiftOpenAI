@@ -62,3 +62,5 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 .ShengYan Code Edit/snapshot/.DS_Store
+
+.ShengYan Code Edit/snapshot/
