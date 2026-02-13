@@ -27,7 +27,7 @@ import Foundation
 /// - ``toolChoice``
 /// - ``ChatCompletionToolParam``
 ///
-public struct ChatQuery: Codable {
+public struct ChatQuery: Codable, Sendable {
     public let messages: [ChatCompletionMessageParam]
     public let model: String
     public let frequencyPenalty: Double?
@@ -89,7 +89,7 @@ public struct ChatQuery: Codable {
     /// 停止序列
     ///
     /// 可以是单个字符串或字符串数组。
-    public enum Stop: Codable {
+    public enum Stop: Codable, Sendable {
         case string(String)
         case array([String])
         
@@ -114,7 +114,7 @@ public struct ChatQuery: Codable {
     }
     
     /// 预测输出配置
-    public struct PredictedOutputConfig: Codable {
+    public struct PredictedOutputConfig: Codable, Sendable {
         public let type: String
         public let content: String?
         
@@ -127,7 +127,7 @@ public struct ChatQuery: Codable {
     /// 响应格式配置
     ///
     /// 用于指定 JSON Schema 等结构化输出格式。
-    public struct ResponseFormat: Codable {
+    public struct ResponseFormat: Codable, Sendable {
         public let type: String
         public let jsonSchema: JSONSchema?
         
@@ -137,7 +137,7 @@ public struct ChatQuery: Codable {
         }
         
         /// JSON Schema 定义
-        public struct JSONSchema: Codable {
+        public struct JSONSchema: Codable, Sendable {
             public let name: String
             public let description: String?
             public let schema: String  // 简化为字符串，避免复杂的[String: Any]编码
@@ -273,7 +273,7 @@ public struct ChatQuery: Codable {
     /// 聊天工具参数
     ///
     /// 定义可供模型调用的函数工具。
-    public struct ChatCompletionToolParam: Codable {
+    public struct ChatCompletionToolParam: Codable, Sendable {
         public let type: String
         public let function: Function
         
@@ -283,7 +283,7 @@ public struct ChatQuery: Codable {
         }
         
         /// 函数定义
-        public struct Function: Codable {
+        public struct Function: Codable, Sendable {
             public let name: String
             public let description: String?
             public let parameters: ParametersContainer?  // 使用包装器类型
@@ -297,7 +297,7 @@ public struct ChatQuery: Codable {
             /// 参数容器
             ///
             /// 用于处理 `[String: Any]` 类型的参数字典。
-            public struct ParametersContainer: Codable, CustomStringConvertible {
+            public struct ParametersContainer: Codable, CustomStringConvertible, Sendable {
                 private let data: [String: AnyCodableValue]
                 
                 public init(_ dict: [String: Any]) {
@@ -339,7 +339,7 @@ public struct ChatQuery: Codable {
     /// 函数调用选项参数
     ///
     /// 控制模型如何选择要调用的函数。
-    public enum ChatCompletionFunctionCallOptionParam: Codable {
+    public enum ChatCompletionFunctionCallOptionParam: Codable, Sendable {
         case none
         case auto
         case required
@@ -401,7 +401,7 @@ struct AnyCodingKey: CodingKey {
 /// 可编码的任意值
 ///
 /// 支持动态类型的 JSON 编解码。
-public enum AnyCodableValue: Codable {
+public enum AnyCodableValue: Codable, Sendable {
     case string(String)
     case int(Int)
     case double(Double)

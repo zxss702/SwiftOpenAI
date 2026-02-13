@@ -68,7 +68,7 @@ public struct AIModelInfoValue {
 /// OpenAI 错误类型
 ///
 /// 定义 OpenAI API 操作中可能发生的各种错误。
-public enum OpenAIError: Error, LocalizedError {
+public nonisolated enum OpenAIError: Error, LocalizedError {
     /// 缺少模型 ID
     case missingModelID
     

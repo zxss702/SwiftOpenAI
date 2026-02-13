@@ -18,7 +18,7 @@ public typealias OpenAIFunctionDefinition = ChatQuery.ChatCompletionToolParam.Fu
 /// 用户消息参数
 ///
 /// 表示来自用户的输入消息，支持文本和图片内容。
-public struct UserMessageParam: Codable {
+public struct UserMessageParam: Codable, Sendable {
     public let content: Content
     public let name: String?
     
@@ -28,7 +28,7 @@ public struct UserMessageParam: Codable {
     }
     
     /// 消息内容
-    public enum Content: Codable {
+    public enum Content: Codable, Sendable {
         case string(String)
         case contentParts([ContentPart])
         
@@ -54,7 +54,7 @@ public struct UserMessageParam: Codable {
         /// 内容部分
         ///
         /// 可以是文本或图片。
-        public enum ContentPart: Codable {
+        public enum ContentPart: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
             
@@ -89,7 +89,7 @@ public struct UserMessageParam: Codable {
             }
             
             /// 文本内容
-            public struct TextContent: Codable {
+            public struct TextContent: Codable, Sendable {
                 public var type: String = "text"
                 public let text: String
                 
@@ -99,7 +99,7 @@ public struct UserMessageParam: Codable {
             }
             
             /// 图片内容
-            public struct ImageContent: Codable {
+            public struct ImageContent: Codable, Sendable {
                 public let type: String = "image_url"
                 public let imageUrl: ImageURL
                 
@@ -113,7 +113,7 @@ public struct UserMessageParam: Codable {
                 }
                 
                 /// 图片 URL 或 Base64 数据
-                public struct ImageURL: Codable {
+                public struct ImageURL: Codable, Sendable {
                     public let url: String
                     public let detail: Detail
                     
@@ -150,7 +150,7 @@ public struct UserMessageParam: Codable {
                     }
                     
                     /// 图片细节级别
-                    public enum Detail: String, Codable, CaseIterable {
+                    public enum Detail: String, Codable, CaseIterable, Sendable {
                         case low
                         case high 
                         case auto
@@ -166,7 +166,7 @@ public struct UserMessageParam: Codable {
 /// 系统消息参数
 ///
 /// 表示系统级指令消息。
-public struct SystemMessageParam: Codable {
+public struct SystemMessageParam: Codable, Sendable {
     public let content: TextContent
     public let name: String?
     
@@ -175,7 +175,7 @@ public struct SystemMessageParam: Codable {
         self.name = name
     }
     
-    public enum TextContent: Codable {
+    public enum TextContent: Codable, Sendable {
         case textContent(String)
         
         public init(from decoder: Decoder) throws {
@@ -212,7 +212,7 @@ public struct SystemMessageParam: Codable {
 ///
 /// ### 工具调用
 /// - ``ToolCallParam``
-public struct AssistantMessageParam: Codable {
+public struct AssistantMessageParam: Codable, Sendable {
     
     /// 消息的文本内容
     public let content: String?
@@ -255,7 +255,7 @@ public struct AssistantMessageParam: Codable {
     }
     
     /// 工具调用参数
-    public struct ToolCallParam: Codable {
+    public struct ToolCallParam: Codable, Sendable {
         public let id: String
         public let type: String
         public let function: FunctionCall
@@ -266,7 +266,7 @@ public struct AssistantMessageParam: Codable {
             self.function = function
         }
         
-        public struct FunctionCall: Codable {
+        public struct FunctionCall: Codable, Sendable {
             public let name: String
             public let arguments: String
             
@@ -283,7 +283,7 @@ public struct AssistantMessageParam: Codable {
 /// 工具消息参数
 ///
 /// 表示工具执行结果的消息。
-public struct ToolMessageParam: Codable {
+public struct ToolMessageParam: Codable, Sendable {
     public let content: Content
     public let toolCallId: String
     
@@ -297,7 +297,7 @@ public struct ToolMessageParam: Codable {
         case toolCallId = "tool_call_id"
     }
     
-    public enum Content: Codable {
+    public enum Content: Codable, Sendable {
         case textContent(String)
         case contentParts([ContentPart])
         
@@ -320,7 +320,7 @@ public struct ToolMessageParam: Codable {
             }
         }
         
-        public enum ContentPart: Codable {
+        public enum ContentPart: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
             
@@ -354,7 +354,7 @@ public struct ToolMessageParam: Codable {
                 case type
             }
             
-            public struct TextContent: Codable {
+            public struct TextContent: Codable, Sendable {
                 public var type: String = "text"
                 public let text: String
                 
@@ -363,7 +363,7 @@ public struct ToolMessageParam: Codable {
                 }
             }
             
-            public struct ImageContent: Codable {
+            public struct ImageContent: Codable, Sendable {
                 public let type: String = "image_url"
                 public let imageUrl: ImageURL
                 
@@ -376,7 +376,7 @@ public struct ToolMessageParam: Codable {
                     case imageUrl = "image_url"
                 }
                 
-                public struct ImageURL: Codable {
+                public struct ImageURL: Codable, Sendable {
                     public let url: String
                     public let detail: Detail
                     
@@ -411,7 +411,7 @@ public struct ToolMessageParam: Codable {
                         }
                     }
                     
-                    public enum Detail: String, Codable, CaseIterable {
+                    public enum Detail: String, Codable, CaseIterable, Sendable {
                         case low
                         case high 
                         case auto

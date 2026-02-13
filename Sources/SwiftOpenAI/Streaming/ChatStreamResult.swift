@@ -83,7 +83,7 @@ public struct ChatStreamResult: Codable {
         }
         
         /// Token 使用统计信息
-        public struct UsageInfo: Codable {
+        public struct UsageInfo: Codable, Sendable {
             /// 提示词使用的 Token 数
             public let promptTokens: Int?
             
@@ -164,7 +164,7 @@ public struct ChatStreamResult: Codable {
             }
             
             /// 增量工具调用
-            public struct ChoiceDeltaToolCall: Codable {
+            public struct ChoiceDeltaToolCall: Codable, Sendable {
                 /// 工具调用在列表中的索引
                 public let index: Int
                 
@@ -185,7 +185,7 @@ public struct ChatStreamResult: Codable {
                 }
                 
                 /// 函数调用增量
-                public struct ChoiceDeltaToolCallFunction: Codable {
+                public struct ChoiceDeltaToolCallFunction: Codable, Sendable {
                     /// 函数名称（增量）
                     public let name: String?
                     

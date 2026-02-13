@@ -5,7 +5,7 @@ import Foundation
 /// OpenAI 聊天流式响应状态
 ///
 /// 表示流式聊天过程中的当前状态。
-public enum OpenAIChatStreamResultState: String, Codable, CaseIterable {
+public enum OpenAIChatStreamResultState: String, Codable, CaseIterable, Sendable {
     /// 等待状态（没有任何输出）
     case wait
     
