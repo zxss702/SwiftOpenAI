@@ -23,15 +23,13 @@ import Foundation
 /// - ``chats(query:)``
 ///
 public class OpenAI {
-    private let configuration: OpenAIConfiguration
-    private let urlSession: URLSession
+    private nonisolated let configuration: OpenAIConfiguration
     
     /// 初始化 OpenAI 客户端
     ///
     /// - Parameter configuration: API 配置，默认使用环境变量中的配置
     public init(configuration: OpenAIConfiguration? = nil) {
         self.configuration = configuration ?? OpenAIConfiguration.default
-        self.urlSession = URLSession(configuration: .default)
     }
     
     /// 发送聊天消息（流式传输）
@@ -49,12 +47,13 @@ public class OpenAI {
     ///     print(result.choices.first?.delta.content ?? "")
     /// }
     /// ```
-    public func chatsStream(query: ChatQuery) -> AsyncThrowingStream<ChatStreamResult, Error> {
+    public nonisolated func chatsStream(query: ChatQuery) -> AsyncThrowingStream<ChatStreamResult, Error> {
+        
         return AsyncThrowingStream { continuation in
-            Task {
+            Task { [configuration] in
                 do {
-                    let request = try createChatRequest(query: query)
-                    let (bytes, response) = try await urlSession.bytes(for: request)
+                    let request = try await createChatRequest(query: query, configuration: configuration)
+                    let (bytes, response) = try await URLSession(configuration: .default).bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse,
                           200...299 ~= httpResponse.statusCode else {
@@ -109,8 +108,8 @@ public class OpenAI {
     /// print(result.choices.first?.message.content ?? "")
     /// ```
     public func chats(query: ChatQuery) async throws -> ChatCompletionResult {
-        let request = try createChatRequest(query: query)
-        let (data, response) = try await urlSession.data(for: request)
+        let request = try await createChatRequest(query: query, configuration: configuration)
+        let (data, response) = try await URLSession(configuration: .default).data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               200...299 ~= httpResponse.statusCode else {
@@ -127,62 +126,63 @@ public class OpenAI {
         }
     }
     
-    private func createChatRequest(query: ChatQuery) throws -> URLRequest {
-        guard let baseURL = configuration.baseURL else {
-            throw OpenAIError.invalidURL
-        }
-        
-        let url = baseURL.appendingPathComponent("chat/completions")
-        var request = URLRequest(url: url)
-        
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
-        
-        if let organizationID = configuration.organizationID {
-            request.setValue(organizationID, forHTTPHeaderField: "OpenAI-Organization")
-        }
+}
 
-        var headers = configuration.extraHeaders ?? [:]
-        if headers["User-Agent"] == nil {
-            headers["User-Agent"] = OpenAIConfiguration.defaultUserAgent
-        }
-        if headers["X-Title"] == nil {
-            headers["X-Title"] = OpenAIConfiguration.defaultXTitle
-        }
-        
-        for (key, value) in headers {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-        
-        var requestBody: [String: Any] = [:]
-        
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(query)
-            if let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                requestBody = jsonObject
-            }
-        } catch {
-            throw OpenAIError.decodingError(error)
-        }
-        
-        if let extraBody = configuration.extraBody {
-            for (key, value) in extraBody {
-                requestBody[key] = value
-            }
-        }
-        
-        if let queryExtraBody = query.extraBody {
-            for (key, value) in queryExtraBody {
-                requestBody[key] = value.anyValue
-            }
-        }
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody, options: [])
-        
-        return request
+nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfiguration) async throws -> URLRequest {
+    guard let baseURL = configuration.baseURL else {
+        throw OpenAIError.invalidURL
     }
+    
+    let url = baseURL.appendingPathComponent("chat/completions")
+    var request = URLRequest(url: url)
+    
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
+    
+    if let organizationID = configuration.organizationID {
+        request.setValue(organizationID, forHTTPHeaderField: "OpenAI-Organization")
+    }
+
+    var headers = configuration.extraHeaders ?? [:]
+    if headers["User-Agent"] == nil {
+        headers["User-Agent"] = OpenAIConfiguration.defaultUserAgent
+    }
+    if headers["X-Title"] == nil {
+        headers["X-Title"] = OpenAIConfiguration.defaultXTitle
+    }
+    
+    for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+    }
+    
+    var requestBody: [String: Any] = [:]
+    
+    do {
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(query)
+        if let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+            requestBody = jsonObject
+        }
+    } catch {
+        throw OpenAIError.decodingError(error)
+    }
+    
+    if let extraBody = configuration.extraBody {
+        for (key, value) in extraBody {
+            requestBody[key] = value
+        }
+    }
+    
+    if let queryExtraBody = query.extraBody {
+        for (key, value) in queryExtraBody {
+            requestBody[key] = value.anyValue
+        }
+    }
+    
+    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody, options: [])
+    
+    return request
 }
 
 // MARK: - Configuration
@@ -210,7 +210,7 @@ public class OpenAI {
 /// - ``extraHeaders``
 /// - ``baseURL``
 ///
-public struct OpenAIConfiguration {
+public struct OpenAIConfiguration : Sendable {
     /// API 访问令牌
     public let token: String
     
@@ -230,7 +230,7 @@ public struct OpenAIConfiguration {
     public let organizationID: String?
     
     /// 额外的请求体参数
-    public let extraBody: [String: Any]?
+    public let extraBody: [String: AnyCodableValue]?
     
     /// 额外的 HTTP 请求头
     public let extraHeaders: [String: String]?
@@ -253,7 +253,7 @@ public struct OpenAIConfiguration {
         scheme: String = "https",
         basePath: String? = nil,
         organizationID: String? = nil,
-        extraBody: [String: Any]? = nil,
+        extraBody: [String: AnyCodableValue]? = nil,
         extraHeaders: [String: String]? = nil
     ) {
         self.token = token
