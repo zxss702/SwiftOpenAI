@@ -5,7 +5,7 @@ import Foundation
 /// AI 模型配置信息
 ///
 /// 封装 AI 模型的连接参数和标识信息。
-public struct AIModelInfoValue {
+public struct AIModelInfoValue: Sendable {
     /// API 访问令牌
     public let token: String
     
