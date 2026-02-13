@@ -33,7 +33,7 @@ public protocol SYToolArgsConvertible {
     static var toolProperties: String { get }
     
     /// 参数 Schema 字典
-    static var parametersSchema: [String: Any] { get }
+    static var parametersSchema: [String: AnyCodableValue] { get }
 }
 
 // MARK: - Macros

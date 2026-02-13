@@ -288,7 +288,7 @@ public struct ChatQuery: Codable, Sendable {
             public let description: String?
             public let parameters: ParametersContainer?  // 使用包装器类型
             
-            public init(name: String, description: String? = nil, parameters: [String: Any]? = nil) {
+            public init(name: String, description: String? = nil, parameters: [String: AnyCodableValue]? = nil) {
                 self.name = name
                 self.description = description
                 self.parameters = parameters.map { ParametersContainer($0) }
@@ -296,12 +296,12 @@ public struct ChatQuery: Codable, Sendable {
             
             /// 参数容器
             ///
-            /// 用于处理 `[String: Any]` 类型的参数字典。
+            /// 用于处理 `[String: AnyCodableValue]` 类型的参数字典。
             public struct ParametersContainer: Codable, CustomStringConvertible, Sendable {
                 private let data: [String: AnyCodableValue]
                 
-                public init(_ dict: [String: Any]) {
-                    self.data = dict.mapValues { AnyCodableValue.from($0) }
+                public init(_ dict: [String: AnyCodableValue]) {
+                    self.data = dict
                 }
                 
                 public func encode(to encoder: Encoder) throws {
@@ -314,7 +314,7 @@ public struct ChatQuery: Codable, Sendable {
                 
                 /// 转换为字典
                 public func toDictionary() -> [String: Any] {
-                    return data.mapValues { $0.anyValue }
+                    return data.toAnyDictionary()
                 }
                 
                 /// 转换为 JSON 字符串
@@ -425,6 +425,8 @@ public enum AnyCodableValue: Codable, Sendable {
             return .bool(bool)
         } else if let array = value as? [Any] {
             return .array(array.map { AnyCodableValue.from($0) })
+        } else if let dict = value as? [String: AnyCodableValue] {
+            return .object(dict)
         } else if let dict = value as? [String: Any] {
             return .object(dict.mapValues { AnyCodableValue.from($0) })
         } else {
@@ -495,4 +497,11 @@ public enum AnyCodableValue: Codable, Sendable {
         }
     }
     
+}
+
+public extension Dictionary where Key == String, Value == AnyCodableValue {
+    /// 将 Sendable 的 schema 字典桥接回 `[String: Any]`。
+    func toAnyDictionary() -> [String: Any] {
+        mapValues { $0.anyValue }
+    }
 }
