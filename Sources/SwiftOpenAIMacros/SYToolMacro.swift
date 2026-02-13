@@ -85,28 +85,27 @@ public struct SYToolMacro: ExtensionMacro {
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): OpenAIToolConvertible") {
             """
             public var asChatCompletionTool: SwiftOpenAI.ChatQuery.ChatCompletionToolParam {
-                let paramsDict: [String: Any]
+                let paramsDict: [String: SwiftOpenAI.AnyCodableValue]
                 
                 \(raw: parametersTypeName != nil ? 
                     "paramsDict = \(parametersTypeName!).parametersSchema" :
                     """
                     // 无参数时使用空的对象schema
                     paramsDict = [
-                        "type": "object",
-                        "properties": [:],
-                        "required": [],
-                        "additionalProperties": false
+                        "type": .string("object"),
+                        "properties": .object([:]),
+                        "required": .array([]),
+                        "additionalProperties": .bool(false)
                     ]
                     """
                 )
                 
-                // 直接传递字典对象，而不是JSON字符串
                 return SwiftOpenAI.ChatQuery.ChatCompletionToolParam(
                     type: "function",
                     function: SwiftOpenAI.ChatQuery.ChatCompletionToolParam.Function(
                         name: self.name,
-                        description: self.description,
-                        parameters: paramsDict  // 使用字典而不是字符串
+                        description: self.description, 
+                        parameters: paramsDict
                     )
                 )
             }
@@ -164,19 +163,19 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 }
                 return nil
             }
-            let enumValuesString = enumValues.map { "\"\($0)\"" }.joined(separator: ", ")
+            let enumValuesString = enumValues.map { ".string(\"\($0)\")" }.joined(separator: ", ")
             let descriptionLine = enumDescription.map {
-                "schema[\"description\"] = \"\(escapeSwiftString($0))\""
+                "schema[\"description\"] = .string(\"\(escapeSwiftString($0))\")"
             } ?? ""
             
             let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
                 """
                 public static var toolProperties: String { "" }
                 
-                public static var parametersSchema: [String: Any] = {
-                    var schema: [String: Any] = [
-                        "type": "string",
-                        "enum": [\(raw: enumValuesString)]
+                public static let parametersSchema: [String: SwiftOpenAI.AnyCodableValue] = {
+                    var schema: [String: SwiftOpenAI.AnyCodableValue] = [
+                        "type": .string("string"),
+                        "enum": .array([\(raw: enumValuesString)])
                     ]
                     \(raw: descriptionLine)
                     return schema
@@ -218,18 +217,19 @@ public struct SYToolArgsMacro: ExtensionMacro {
         }
         
         let propertiesDictString = propertiesDictEntries.isEmpty ? "[:]" : "[\(propertiesDictEntries.joined(separator: ", "))]"
-        let requiredString = required.map { "\"\($0)\"" }.joined(separator: ", ")
+        let requiredString = required.map { ".string(\"\($0)\")" }.joined(separator: ", ")
         
         let extensionDecl = try ExtensionDeclSyntax("nonisolated extension \(type.trimmed): SYToolArgsConvertible") {
             """
             public static var toolProperties: String {
-                let properties: [String: Any] = \(raw: propertiesDictString)
+                let properties: [String: SwiftOpenAI.AnyCodableValue] = \(raw: propertiesDictString)
+                let propertiesAny = properties.toAnyDictionary()
                 
-                if properties.isEmpty {
+                if propertiesAny.isEmpty {
                     return ""
                 }
                 
-                if let data = try? JSONSerialization.data(withJSONObject: properties),
+                if let data = try? JSONSerialization.data(withJSONObject: propertiesAny),
                    let jsonString = String(data: data, encoding: .utf8) {
                     return jsonString
                 }
@@ -237,11 +237,11 @@ public struct SYToolArgsMacro: ExtensionMacro {
                 return ""
             }
             
-            public static var parametersSchema: [String: Any] =[
-                    "type": "object",
-                    "properties": \(raw: propertiesDictString),
-                    "required": [\(raw: requiredString)],
-                    "additionalProperties": false
+            public static let parametersSchema: [String: SwiftOpenAI.AnyCodableValue] = [
+                    "type": .string("object"),
+                    "properties": .object(\(raw: propertiesDictString)),
+                    "required": .array([\(raw: requiredString)]),
+                    "additionalProperties": .bool(false)
             ]
             """
         }
@@ -266,33 +266,33 @@ public struct SYToolArgsMacro: ExtensionMacro {
         description: String?
     ) -> String {
         if let customType = typeInfo.customTypeName {
-            var schemaExpression = "\(customType).parametersSchema"
+            var schemaExpression = ".object(\(customType).parametersSchema)"
             if let description = description {
-                schemaExpression = "\(schemaExpression).merging([\"description\": \"\(escapeSwiftString(description))\"]) { _, new in new }"
+                schemaExpression = ".object(\(customType).parametersSchema.merging([\"description\": .string(\"\(escapeSwiftString(description))\")]) { _, new in new })"
             }
             return "\"\(name)\": \(schemaExpression)"
         }
         
         var propertyDictEntries: [String] = [
-            "\"type\": \"\(typeInfo.type)\""
+            "\"type\": .string(\"\(typeInfo.type)\")"
         ]
         
         if let description = description {
-            propertyDictEntries.append("\"description\": \"\(escapeSwiftString(description))\"")
+            propertyDictEntries.append("\"description\": .string(\"\(escapeSwiftString(description))\")")
         }
         
         if let items = typeInfo.items {
             if let customType = items.customTypeName {
-                propertyDictEntries.append("\"items\": \(customType).parametersSchema")
+                propertyDictEntries.append("\"items\": .object(\(customType).parametersSchema)")
             } else {
                 let itemEntries: [String] = [
-                    "\"type\": \"\(items.type)\""
+                    "\"type\": .string(\"\(items.type)\")"
                 ]
-                propertyDictEntries.append("\"items\": [\(itemEntries.joined(separator: ", "))]")
+                propertyDictEntries.append("\"items\": .object([\(itemEntries.joined(separator: ", "))])")
             }
         }
         
-        let propertyDictCode = "[\(propertyDictEntries.joined(separator: ", "))]"
+        let propertyDictCode = ".object([\(propertyDictEntries.joined(separator: ", "))])"
         return "\"\(name)\": \(propertyDictCode)"
     }
     
@@ -398,15 +398,4 @@ private extension SYToolArgsMacro {
         }
         return nonStringRawTypes.contains(typeName)
     }
-}
-
-
-
-// MARK: - Protocols  
-nonisolated public protocol OpenAIToolConvertible {
-    // 协议在SwiftOpenAI模块中定义，这里只是引用
-}
-
-nonisolated public protocol SYToolArgsConvertible {
-    static var parametersSchema: [String: Any] { get }
 }
