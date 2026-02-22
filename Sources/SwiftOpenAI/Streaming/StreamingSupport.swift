@@ -59,7 +59,7 @@ nonisolated public func sendMessage(
     stream: Bool = true,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
-    action: (OpenAIChatStreamResult) async throws -> Void
+    action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
     let actorHelper = OpenAISendMessageValueHelper()
     let resolvedModelInfo = modelInfo
@@ -95,6 +95,25 @@ nonisolated public func sendMessage(
         extraBody: extraBody
     )
     
+    let task = Task { [weak actorHelper] in
+        while !Task.isCancelled, let actorHelper {
+            try await action(OpenAIChatStreamResult(
+                subThinkingText: actorHelper.subThinkingText,
+                subText: actorHelper.subText,
+                fullThinkingText: await actorHelper.fullThinkingText,
+                fullText: await actorHelper.fullText,
+                state: await actorHelper.state,
+                allToolCalls: await actorHelper.allToolCalls
+            ))
+            
+            await actorHelper.cleanSub()
+            try await Task.sleep(for: .seconds(0.1))
+        }
+    }
+    defer {
+        task.cancel()
+    }
+    
     for try await result in openAI.chatsStream(query: query) {
         try Task.checkCancellation()
         
@@ -128,15 +147,6 @@ nonisolated public func sendMessage(
                     }
                 }
             }
-            
-            try await action(OpenAIChatStreamResult(
-                subThinkingText: choice.delta.reasoning ?? "",
-                subText: choice.delta.content ?? "",
-                fullThinkingText: await actorHelper.fullThinkingText,
-                fullText: await actorHelper.fullText,
-                state: await actorHelper.state,
-                allToolCalls: await actorHelper.allToolCalls
-            ))
         }
     }
     

@@ -38,6 +38,14 @@ public actor OpenAISendMessageValueHelper {
     
     public init() {}
     
+    public var subText: String = ""
+    public var subThinkingText: String = ""
+    
+    public func cleanSub() {
+        self.subText = ""
+        self.subThinkingText = ""
+    }
+    
     /// 设置文本内容并更新状态
     ///
     /// - Parameters:
@@ -46,6 +54,8 @@ public actor OpenAISendMessageValueHelper {
     public func setText(thinkingText: String, text: String) {
         fullThinkingText += thinkingText
         fullText += text
+        subThinkingText += thinkingText
+        subText += text
         
         if !thinkingText.isEmpty {
             state = .think
