@@ -50,7 +50,7 @@ public class OpenAI {
     public nonisolated func chatsStream(query: ChatQuery) -> AsyncThrowingStream<ChatStreamResult, Error> {
         
         return AsyncThrowingStream { continuation in
-            Task { [configuration] in
+            let task = Task { [configuration] in
                 do {
                     let request = try await createChatRequest(query: query, configuration: configuration)
                     let (bytes, response) = try await URLSession(configuration: .default).bytes(for: request)
@@ -71,6 +71,7 @@ public class OpenAI {
                     }
                     
                     for try await line in bytes.lines {
+                        try Task.checkCancellation()
                         guard !line.isEmpty, !line.hasPrefix(":") else { continue }
                         
                         let dataString = line.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespaces)
@@ -88,6 +89,9 @@ public class OpenAI {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
