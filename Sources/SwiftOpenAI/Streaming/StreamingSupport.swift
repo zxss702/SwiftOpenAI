@@ -96,7 +96,7 @@ nonisolated public func sendMessage(
     )
     
     let task = Task { [weak actorHelper] in
-        while !Task.isCancelled, let actorHelper {
+        while true, let actorHelper {
             try await action(OpenAIChatStreamResult(
                 subThinkingText: actorHelper.subThinkingText,
                 subText: actorHelper.subText,
@@ -108,6 +108,7 @@ nonisolated public func sendMessage(
             
             await actorHelper.cleanSub()
             try await Task.sleep(for: .seconds(0.1))
+            try Task.checkCancellation()
         }
     }
     defer {
