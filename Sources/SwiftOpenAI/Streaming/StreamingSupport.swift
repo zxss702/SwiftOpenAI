@@ -97,16 +97,9 @@ nonisolated public func sendMessage(
     
     let task = Task { [weak actorHelper] in
         while !Task.isCancelled, let actorHelper {
-            try await action(OpenAIChatStreamResult(
-                subThinkingText: actorHelper.subThinkingText,
-                subText: actorHelper.subText,
-                fullThinkingText: await actorHelper.fullThinkingText,
-                fullText: await actorHelper.fullText,
-                state: await actorHelper.state,
-                allToolCalls: await actorHelper.allToolCalls
-            ))
-            await actorHelper.cleanSub()
-            try await Task.sleep(for: .seconds(0.1))
+            let result = await actorHelper.getResult()
+            try await action(result)
+            try await Task.sleep(for: .seconds(0.2))
         }
     }
     defer {
@@ -151,14 +144,8 @@ nonisolated public func sendMessage(
     
     task.cancel()
     
-    try await action(OpenAIChatStreamResult(
-        subThinkingText: actorHelper.subThinkingText,
-        subText: actorHelper.subText,
-        fullThinkingText: await actorHelper.fullThinkingText,
-        fullText: await actorHelper.fullText,
-        state: await actorHelper.state,
-        allToolCalls: await actorHelper.allToolCalls
-    ))
+    let result = await actorHelper.getResult()
+    try await action(result)
     
     await actorHelper.setState(.text)
     

@@ -41,9 +41,20 @@ public actor OpenAISendMessageValueHelper {
     public var subText: String = ""
     public var subThinkingText: String = ""
     
-    public func cleanSub() {
+    public func getResult() -> OpenAIChatStreamResult {
+        let subText = subText
+        let subThinkingText = subThinkingText
         self.subText = ""
         self.subThinkingText = ""
+        
+        return OpenAIChatStreamResult(
+            subThinkingText: subThinkingText,
+            subText: subText,
+            fullThinkingText: fullThinkingText,
+            fullText: fullText,
+            state: state,
+            allToolCalls: allToolCalls
+        )
     }
     
     /// 设置文本内容并更新状态
