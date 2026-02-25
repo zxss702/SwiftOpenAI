@@ -95,7 +95,7 @@ nonisolated public func sendMessage(
         extraBody: extraBody
     )
     
-    let task = Task { [weak actorHelper] in
+    let task = Task.detached { [weak actorHelper] in
         while !Task.isCancelled, let actorHelper {
             let result = await actorHelper.getResult()
             try await action(result)
