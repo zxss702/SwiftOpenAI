@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // MARK: - OpenAI Client
 
@@ -53,6 +56,33 @@ public class OpenAI {
             let task = Task { [configuration] in
                 do {
                     let request = try await createChatRequest(query: query, configuration: configuration)
+#if canImport(FoundationNetworking)
+                    let (data, response) = try await URLSession(configuration: .default).data(for: request)
+
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          200...299 ~= httpResponse.statusCode else {
+                        let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+                        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                    }
+
+                    let responseText = String(data: data, encoding: .utf8) ?? ""
+                    for rawLine in responseText.split(whereSeparator: \.isNewline) {
+                        try Task.checkCancellation()
+                        let line = String(rawLine)
+                        guard !line.isEmpty, !line.hasPrefix(":") else { continue }
+
+                        let dataString = line.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespaces)
+                        if dataString == "[DONE]" {
+                            continuation.finish()
+                            return
+                        }
+
+                        let chunk = Data(dataString.utf8)
+                        let streamResult = try JSONDecoder().decode(ChatStreamResult.self, from: chunk)
+                        continuation.yield(streamResult)
+                    }
+#else
                     let (bytes, response) = try await URLSession(configuration: .default).bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse,
@@ -82,9 +112,10 @@ public class OpenAI {
                         }
                         
                         let data = Data(dataString.utf8)
-                        let streamResult = try! JSONDecoder().decode(ChatStreamResult.self, from: data)
+                        let streamResult = try JSONDecoder().decode(ChatStreamResult.self, from: data)
                         continuation.yield(streamResult)
                     }
+#endif
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
