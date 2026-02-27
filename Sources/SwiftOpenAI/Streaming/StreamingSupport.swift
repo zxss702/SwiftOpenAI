@@ -97,8 +97,11 @@ nonisolated public func sendMessage(
     
     let task = Task.detached { [weak actorHelper] in
         while !Task.isCancelled, let actorHelper {
-            let result = await actorHelper.getResult()
-            try await action(result)
+            if await actorHelper.hasPendingDelta() {
+                let result = await actorHelper.peekResult()
+                try await action(result)
+                await actorHelper.clearPendingDelta()
+            }
             try await Task.sleep(for: .seconds(0.2))
         }
     }
@@ -144,8 +147,11 @@ nonisolated public func sendMessage(
     
     task.cancel()
     
-    let result = await actorHelper.getResult()
-    try await action(result)
+    if await actorHelper.hasPendingDelta() {
+        let result = await actorHelper.peekResult()
+        try await action(result)
+        await actorHelper.clearPendingDelta()
+    }
     
     await actorHelper.setState(.text)
     

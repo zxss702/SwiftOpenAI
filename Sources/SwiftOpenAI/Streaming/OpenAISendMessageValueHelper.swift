@@ -40,14 +40,10 @@ public actor OpenAISendMessageValueHelper {
     
     public var subText: String = ""
     public var subThinkingText: String = ""
+    private var toolCallsDirty: Bool = false
     
     public func getResult() -> OpenAIChatStreamResult {
-        let subText = subText
-        let subThinkingText = subThinkingText
-        self.subText = ""
-        self.subThinkingText = ""
-        
-        return OpenAIChatStreamResult(
+        let result = OpenAIChatStreamResult(
             subThinkingText: subThinkingText,
             subText: subText,
             fullThinkingText: fullThinkingText,
@@ -55,6 +51,33 @@ public actor OpenAISendMessageValueHelper {
             state: state,
             allToolCalls: allToolCalls
         )
+        
+        subText = ""
+        subThinkingText = ""
+        toolCallsDirty = false
+        
+        return result
+    }
+    
+    public func peekResult() -> OpenAIChatStreamResult {
+        OpenAIChatStreamResult(
+            subThinkingText: subThinkingText,
+            subText: subText,
+            fullThinkingText: fullThinkingText,
+            fullText: fullText,
+            state: state,
+            allToolCalls: allToolCalls
+        )
+    }
+    
+    public func hasPendingDelta() -> Bool {
+        !subThinkingText.isEmpty || !subText.isEmpty || toolCallsDirty
+    }
+    
+    public func clearPendingDelta() {
+        subThinkingText = ""
+        subText = ""
+        toolCallsDirty = false
     }
     
     /// 设置文本内容并更新状态
@@ -90,6 +113,7 @@ public actor OpenAISendMessageValueHelper {
     public func setAllToolCalls(index: Int, call: ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall) {
         guard index < allToolCalls.count else { return }
         allToolCalls[index] = call
+        toolCallsDirty = true
     }
     
     /// 添加新的工具调用
@@ -97,6 +121,7 @@ public actor OpenAISendMessageValueHelper {
     /// - Parameter call: 要添加的工具调用
     public func appendAllToolCalls(_ call: ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall) {
         allToolCalls.append(call)
+        toolCallsDirty = true
     }
     
     /// 设置 Token 使用统计信息
@@ -110,6 +135,9 @@ public actor OpenAISendMessageValueHelper {
     public func reset() {
         fullThinkingText = ""
         fullText = ""
+        subThinkingText = ""
+        subText = ""
+        toolCallsDirty = false
         state = .wait
         allToolCalls = []
         usage = nil
