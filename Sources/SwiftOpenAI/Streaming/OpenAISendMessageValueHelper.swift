@@ -21,9 +21,6 @@ import Foundation
 /// - ``reset()``
 ///
 public actor OpenAISendMessageValueHelper {
-    /// 当前流式响应状态
-    public var state: OpenAIChatStreamResultState = .wait
-    
     /// 累积的完整思考文本
     public var fullThinkingText: String = ""
     
@@ -43,12 +40,12 @@ public actor OpenAISendMessageValueHelper {
     private var toolCallsDirty: Bool = false
     
     public func getResult() -> OpenAIChatStreamResult {
+        
         let result = OpenAIChatStreamResult(
             subThinkingText: subThinkingText,
             subText: subText,
             fullThinkingText: fullThinkingText,
             fullText: fullText,
-            state: state,
             allToolCalls: allToolCalls
         )
         
@@ -65,7 +62,6 @@ public actor OpenAISendMessageValueHelper {
             subText: subText,
             fullThinkingText: fullThinkingText,
             fullText: fullText,
-            state: state,
             allToolCalls: allToolCalls
         )
     }
@@ -90,19 +86,6 @@ public actor OpenAISendMessageValueHelper {
         fullText += text
         subThinkingText += thinkingText
         subText += text
-        
-        if !thinkingText.isEmpty {
-            state = .think
-        } else if !text.isEmpty {
-            state = .text
-        }
-    }
-    
-    /// 设置当前状态
-    ///
-    /// - Parameter newState: 新的流式响应状态
-    public func setState(_ newState: OpenAIChatStreamResultState) {
-        state = newState
     }
     
     /// 更新指定索引的工具调用
@@ -138,7 +121,6 @@ public actor OpenAISendMessageValueHelper {
         subThinkingText = ""
         subText = ""
         toolCallsDirty = false
-        state = .wait
         allToolCalls = []
         usage = nil
     }

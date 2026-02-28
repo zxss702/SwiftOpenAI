@@ -146,8 +146,6 @@ nonisolated public func sendMessage(
     let finalResult = await actorHelper.getResult()
     try await action(finalResult)
     
-    await actorHelper.setState(.text)
-    
     return await OpenAIChatResult(
         fullThinkingText: actorHelper.fullThinkingText,
         fullText: actorHelper.fullText,

@@ -1,33 +1,5 @@
 import Foundation
 
-// MARK: - Stream State
-
-/// OpenAI 聊天流式响应状态
-///
-/// 表示流式聊天过程中的当前状态。
-public enum OpenAIChatStreamResultState: String, Codable, CaseIterable, Sendable {
-    /// 等待状态（没有任何输出）
-    case wait
-    
-    /// 思考状态（正在输出思考过程）
-    case think
-    
-    /// 文本输出状态（正在输出内容）
-    case text
-    
-    /// 状态的可读描述
-    public var description: String {
-        switch self {
-        case .wait:
-            return "等待中"
-        case .think:
-            return "思考中"
-        case .text:
-            return "输出内容"
-        }
-    }
-}
-
 // MARK: - Stream Result
 
 /// OpenAI 聊天流式结果
@@ -47,9 +19,6 @@ public struct OpenAIChatStreamResult: Sendable {
     /// 累积的完整输出文本
     public let fullText: String
     
-    /// 当前流式响应状态
-    public let state: OpenAIChatStreamResultState
-    
     /// 所有工具调用列表
     public let allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall]
     
@@ -58,14 +27,12 @@ public struct OpenAIChatStreamResult: Sendable {
         subText: String,
         fullThinkingText: String,
         fullText: String,
-        state: OpenAIChatStreamResultState,
         allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall]
     ) {
         self.subThinkingText = subThinkingText
         self.subText = subText
         self.fullThinkingText = fullThinkingText
         self.fullText = fullText
-        self.state = state
         self.allToolCalls = allToolCalls
     }
 }
@@ -83,9 +50,6 @@ public struct OpenAIChatResult: Sendable {
     /// 完整的输出文本
     public let fullText: String
     
-    /// 最终状态
-    public let state: OpenAIChatStreamResultState
-    
     /// 所有工具调用列表
     public let allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall]
     
@@ -95,13 +59,11 @@ public struct OpenAIChatResult: Sendable {
     public init(
         fullThinkingText: String,
         fullText: String,
-        state: OpenAIChatStreamResultState,
         allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall],
         usage: ChatStreamResult.Choice.UsageInfo? = nil
     ) {
         self.fullThinkingText = fullThinkingText
         self.fullText = fullText
-        self.state = state
         self.allToolCalls = allToolCalls
         self.usage = usage
     }
