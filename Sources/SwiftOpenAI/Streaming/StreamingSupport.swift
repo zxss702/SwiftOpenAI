@@ -95,16 +95,7 @@ nonisolated public func sendMessage(
         extraBody: extraBody
     )
     
-    let task = Task.detached { [weak actorHelper] in
-        while !Task.isCancelled, let actorHelper {
-            let result = await actorHelper.getResult()
-            try await action(result)
-            try await Task.sleep(for: .seconds(0.2))
-        }
-    }
-    defer {
-        task.cancel()
-    }
+    var lastSendTime = Date().timeIntervalSince1970
     
     for try await result in openAI.chatsStream(query: query) {
         try Task.checkCancellation()
@@ -140,12 +131,20 @@ nonisolated public func sendMessage(
                 }
             }
         }
+        
+        // 节流处理：判断距离上次发送是否超过 0.2 秒
+        let currentTime = Date().timeIntervalSince1970
+        if currentTime - lastSendTime >= 0.2 {
+            // 时间到了，将当前收集到的缓冲数据取出来发送
+            let currentResult = await actorHelper.getResult()
+            try await action(currentResult)
+            lastSendTime = currentTime
+        }
     }
     
-    task.cancel()
-    
-    let result = await actorHelper.getResult()
-    try await action(result)
+    // 网络流接收完毕后，把最后残余的（不足0.2秒的）文本缓冲吐出去
+    let finalResult = await actorHelper.getResult()
+    try await action(finalResult)
     
     await actorHelper.setState(.text)
     
