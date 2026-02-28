@@ -149,7 +149,6 @@ nonisolated public func sendMessage(
     return await OpenAIChatResult(
         fullThinkingText: actorHelper.fullThinkingText,
         fullText: actorHelper.fullText,
-        state: actorHelper.state,
         allToolCalls: actorHelper.allToolCalls,
         usage: await actorHelper.usage
     )
