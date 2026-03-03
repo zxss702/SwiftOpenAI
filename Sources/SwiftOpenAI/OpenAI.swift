@@ -57,7 +57,7 @@ public class OpenAI {
                 do {
                     let request = try await createChatRequest(query: query, configuration: configuration)
 #if canImport(FoundationNetworking)
-                    let (data, response) = try await URLSession(configuration: .default).data(for: request)
+                    let (data, response) = try await URLSession.shared.data(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse,
                           200...299 ~= httpResponse.statusCode else {
@@ -83,7 +83,7 @@ public class OpenAI {
                         continuation.yield(streamResult)
                     }
 #else
-                    let (bytes, response) = try await URLSession(configuration: .default).bytes(for: request)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse,
                           200...299 ~= httpResponse.statusCode else {
