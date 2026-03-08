@@ -108,7 +108,11 @@ public class OpenAI {
                         try Task.checkCancellation()
                         guard !line.isEmpty, !line.hasPrefix(":") else { continue }
                         
-                        let dataString = line.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespaces)
+                        var dataString = line
+                        if dataString.hasPrefix("data:") {
+                            dataString.removeFirst(5)
+                        }
+                        dataString = dataString.trimmingCharacters(in: .whitespaces)
                         
                         if dataString == "[DONE]" {
                             continuation.finish()
