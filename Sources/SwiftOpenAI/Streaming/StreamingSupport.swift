@@ -143,6 +143,7 @@ nonisolated public func sendMessage(
     }
     
     // 网络流接收完毕后，把最后残余的（不足0.2秒的）文本缓冲吐出去
+    await actorHelper.finalizePendingTaggedText()
     let finalResult = await actorHelper.getResult()
     try await action(finalResult)
     

@@ -147,15 +147,6 @@ final class SwiftOpenAITests: XCTestCase {
         XCTAssertEqual(url?.path, "/v1")
     }
     
-    func testOpenAIChatStreamResultState() {
-        let states: [OpenAIChatStreamResultState] = [.wait, .think, .text]
-        
-        XCTAssertEqual(states.count, 3)
-        XCTAssertEqual(OpenAIChatStreamResultState.wait.description, "等待中")
-        XCTAssertEqual(OpenAIChatStreamResultState.think.description, "思考中")
-        XCTAssertEqual(OpenAIChatStreamResultState.text.description, "输出内容")
-    }
-    
     func testToolDefinition() {
         let tool = BasicTestTool()
         print(tool.asChatCompletionTool)
@@ -217,24 +208,23 @@ final class SwiftOpenAITests: XCTestCase {
     func testOpenAISendMessageValueHelper() async {
         let helper = OpenAISendMessageValueHelper()
         
-        // 测试初始状态
         let initialText = await helper.fullText
         let initialThinkingText = await helper.fullThinkingText
-        let initialState = await helper.state
         let initialCount = await helper.allToolCalls.count
+        let initialPendingDelta = await helper.hasPendingDelta()
         
         XCTAssertEqual(initialText, "")
         XCTAssertEqual(initialThinkingText, "")
-        XCTAssertEqual(initialState, .wait)
         XCTAssertEqual(initialCount, 0)
+        XCTAssertFalse(initialPendingDelta)
         
         await helper.setText(thinkingText: "Thinking...", text: "Hello")
         let fullText1 = await helper.fullText
         let fullThinkingText1 = await helper.fullThinkingText
-        let state1 = await helper.state
+        let pendingDelta1 = await helper.hasPendingDelta()
         XCTAssertEqual(fullText1, "Hello")
         XCTAssertEqual(fullThinkingText1, "Thinking...")
-        XCTAssertEqual(state1, .think)  // setText 自动设置为 .think 因为 thinkingText 不为空
+        XCTAssertTrue(pendingDelta1)
         
         let toolCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
             index: 0,
@@ -248,12 +238,48 @@ final class SwiftOpenAITests: XCTestCase {
         await helper.reset()
         let fullText2 = await helper.fullText
         let fullThinkingText2 = await helper.fullThinkingText
-        let state2 = await helper.state
         let toolCallsCount2 = await helper.allToolCalls.count
+        let pendingDelta2 = await helper.hasPendingDelta()
         XCTAssertEqual(fullText2, "")
         XCTAssertEqual(fullThinkingText2, "")
-        XCTAssertEqual(state2, .wait)
         XCTAssertEqual(toolCallsCount2, 0)
+        XCTAssertFalse(pendingDelta2)
+    }
+
+    func testOpenAISendMessageValueHelperParsesThinkTagsFromContent() async {
+        let helper = OpenAISendMessageValueHelper()
+
+        await helper.setText(thinkingText: "", text: "<think>先思考</think>再回答")
+        await helper.finalizePendingTaggedText()
+        let result = await helper.getResult()
+
+        XCTAssertEqual(result.subThinkingText, "先思考")
+        XCTAssertEqual(result.subText, "再回答")
+        XCTAssertEqual(result.fullThinkingText, "先思考")
+        XCTAssertEqual(result.fullText, "再回答")
+    }
+
+    func testOpenAISendMessageValueHelperParsesSplitThinkTagsAcrossChunks() async {
+        let helper = OpenAISendMessageValueHelper()
+
+        await helper.setText(thinkingText: "", text: "<thi")
+        await helper.setText(thinkingText: "", text: "nk>推理")
+        var result = await helper.getResult()
+        XCTAssertEqual(result.subThinkingText, "推理")
+        XCTAssertEqual(result.subText, "")
+
+        await helper.setText(thinkingText: "", text: "中</th")
+        result = await helper.getResult()
+        XCTAssertEqual(result.subThinkingText, "中")
+        XCTAssertEqual(result.subText, "")
+
+        await helper.setText(thinkingText: "", text: "ink>答案")
+        await helper.finalizePendingTaggedText()
+        result = await helper.getResult()
+        XCTAssertEqual(result.subThinkingText, "")
+        XCTAssertEqual(result.subText, "答案")
+        XCTAssertEqual(result.fullThinkingText, "推理中")
+        XCTAssertEqual(result.fullText, "答案")
     }
     
     func testErrorTypes() {
