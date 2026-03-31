@@ -67,9 +67,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertNil(body["max_completion_tokens"])
         XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
         XCTAssertEqual(body["top_p"] as? Double, 0.85)
-        XCTAssertNil(body["reasoning_split"])
-        let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
-        XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
+        XCTAssertEqual(body["reasoning_split"] as? Bool, true)
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let assistantMessage = try XCTUnwrap(messages.first)
@@ -94,9 +92,7 @@ final class ProviderCompatibilityTests: XCTestCase {
             )
 
             let body = try requestBody(from: prepared.urlRequest)
-            XCTAssertNil(body["reasoning_split"])
-            let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
-            XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
+            XCTAssertEqual(body["reasoning_split"] as? Bool, true)
         }
     }
 
@@ -109,7 +105,6 @@ final class ProviderCompatibilityTests: XCTestCase {
                 extraBody: [
                     "reasoning_split": .bool(false),
                     "extra_body": .object([
-                        "reasoning_split": .bool(false),
                         "custom_flag": .string("keep-me")
                     ])
                 ]
@@ -122,9 +117,8 @@ final class ProviderCompatibilityTests: XCTestCase {
         )
 
         let body = try requestBody(from: prepared.urlRequest)
-        XCTAssertNil(body["reasoning_split"])
+        XCTAssertEqual(body["reasoning_split"] as? Bool, true)
         let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
-        XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
         XCTAssertEqual(extraBody["custom_flag"] as? String, "keep-me")
     }
 
