@@ -21,11 +21,6 @@ import Foundation
 /// - ``reset()``
 ///
 public actor OpenAISendMessageValueHelper {
-    private enum ThinkTag {
-        static let opening = "<think>"
-        static let closing = "</think>"
-    }
-
     /// 累积的完整思考文本
     public var fullThinkingText: String = ""
     
@@ -43,8 +38,6 @@ public actor OpenAISendMessageValueHelper {
     public var subText: String = ""
     public var subThinkingText: String = ""
     private var toolCallsDirty: Bool = false
-    private var pendingTaggedText: String = ""
-    private var isInsideThinkTag = false
     
     public func getResult() -> OpenAIChatStreamResult {
         
@@ -89,22 +82,10 @@ public actor OpenAISendMessageValueHelper {
     ///   - thinkingText: 思考文本增量
     ///   - text: 输出文本增量
     public func setText(thinkingText: String, text: String) {
-        appendThinkingText(thinkingText)
-        parseTaggedText(text)
-    }
-
-    public func finalizePendingTaggedText() {
-        guard !pendingTaggedText.isEmpty else { return }
-
-        if isInsideThinkTag {
-            if !ThinkTag.closing.hasPrefix(pendingTaggedText) {
-                appendThinkingText(pendingTaggedText)
-            }
-        } else {
-            appendVisibleText(pendingTaggedText)
-        }
-
-        pendingTaggedText = ""
+        fullThinkingText += thinkingText
+        fullText += text
+        subThinkingText += thinkingText
+        subText += text
     }
     
     /// 更新指定索引的工具调用
@@ -140,84 +121,7 @@ public actor OpenAISendMessageValueHelper {
         subThinkingText = ""
         subText = ""
         toolCallsDirty = false
-        pendingTaggedText = ""
-        isInsideThinkTag = false
         allToolCalls = []
         usage = nil
-    }
-
-    private func appendThinkingText(_ text: String) {
-        guard !text.isEmpty else { return }
-        fullThinkingText += text
-        subThinkingText += text
-    }
-
-    private func appendVisibleText(_ text: String) {
-        guard !text.isEmpty else { return }
-        fullText += text
-        subText += text
-    }
-
-    private func parseTaggedText(_ text: String) {
-        guard !text.isEmpty else { return }
-
-        pendingTaggedText += text
-
-        while !pendingTaggedText.isEmpty {
-            if isInsideThinkTag {
-                if let range = pendingTaggedText.range(of: ThinkTag.closing) {
-                    appendThinkingText(String(pendingTaggedText[..<range.lowerBound]))
-                    pendingTaggedText.removeSubrange(..<range.upperBound)
-                    isInsideThinkTag = false
-                    continue
-                }
-
-                let safeCount = safeEmissionCount(
-                    in: pendingTaggedText,
-                    token: ThinkTag.closing
-                )
-                guard safeCount > 0 else { break }
-
-                let splitIndex = pendingTaggedText.index(
-                    pendingTaggedText.startIndex,
-                    offsetBy: safeCount
-                )
-                appendThinkingText(String(pendingTaggedText[..<splitIndex]))
-                pendingTaggedText.removeSubrange(..<splitIndex)
-            } else {
-                if let range = pendingTaggedText.range(of: ThinkTag.opening) {
-                    appendVisibleText(String(pendingTaggedText[..<range.lowerBound]))
-                    pendingTaggedText.removeSubrange(..<range.upperBound)
-                    isInsideThinkTag = true
-                    continue
-                }
-
-                let safeCount = safeEmissionCount(
-                    in: pendingTaggedText,
-                    token: ThinkTag.opening
-                )
-                guard safeCount > 0 else { break }
-
-                let splitIndex = pendingTaggedText.index(
-                    pendingTaggedText.startIndex,
-                    offsetBy: safeCount
-                )
-                appendVisibleText(String(pendingTaggedText[..<splitIndex]))
-                pendingTaggedText.removeSubrange(..<splitIndex)
-            }
-        }
-    }
-
-    private func safeEmissionCount(in text: String, token: String) -> Int {
-        let maxOverlap = min(text.count, token.count - 1)
-
-        for overlap in stride(from: maxOverlap, through: 1, by: -1) {
-            let suffix = String(text.suffix(overlap))
-            if token.hasPrefix(suffix) {
-                return text.count - overlap
-            }
-        }
-
-        return text.count
     }
 }
