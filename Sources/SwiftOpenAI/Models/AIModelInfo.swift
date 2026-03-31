@@ -89,6 +89,12 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
     
     /// 无效的响应
     case invalidResponse(String)
+
+    /// 当前厂商不支持此能力
+    case providerUnsupported(String)
+
+    /// 参数组合不受支持
+    case unsupportedParameterCombination(String)
     
     /// 错误的本地化描述
     public var errorDescription: String? {
@@ -107,6 +113,10 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
             return "流式传输错误: \(message)"
         case .invalidResponse(let message):
             return "无效的响应: \(message)"
+        case .providerUnsupported(let message):
+            return "厂商能力不支持: \(message)"
+        case .unsupportedParameterCombination(let message):
+            return "参数组合不支持: \(message)"
         }
     }
 }
