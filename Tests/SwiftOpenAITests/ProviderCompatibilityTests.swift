@@ -67,13 +67,65 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertNil(body["max_completion_tokens"])
         XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
         XCTAssertEqual(body["top_p"] as? Double, 0.85)
-        XCTAssertEqual(body["reasoning_split"] as? Bool, true)
+        XCTAssertNil(body["reasoning_split"])
+        let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
+        XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let assistantMessage = try XCTUnwrap(messages.first)
         XCTAssertNil(assistantMessage["reasoning_content"])
         let reasoningDetails = try XCTUnwrap(assistantMessage["reasoning_details"] as? [[String: Any]])
         XCTAssertEqual(reasoningDetails.first?["text"] as? String, "think-first")
+    }
+
+    func testMiniMaxAlwaysForcesReasoningSplitTrue() async throws {
+        for think in [Optional(true), Optional(false), Optional<Bool>.none] {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("hello")],
+                    model: "MiniMax-M2.7",
+                    think: think
+                ),
+                configuration: OpenAIConfiguration(
+                    token: "test-token",
+                    host: "api.minimax.io",
+                    basePath: "/v1"
+                )
+            )
+
+            let body = try requestBody(from: prepared.urlRequest)
+            XCTAssertNil(body["reasoning_split"])
+            let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
+            XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
+        }
+    }
+
+    func testMiniMaxReasoningSplitOverridesUserExtraBody() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "MiniMax-M2.7",
+                think: false,
+                extraBody: [
+                    "reasoning_split": .bool(false),
+                    "extra_body": .object([
+                        "reasoning_split": .bool(false),
+                        "custom_flag": .string("keep-me")
+                    ])
+                ]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimaxi.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        XCTAssertNil(body["reasoning_split"])
+        let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
+        XCTAssertEqual(extraBody["reasoning_split"] as? Bool, true)
+        XCTAssertEqual(extraBody["custom_flag"] as? String, "keep-me")
     }
 
     func testOpenAIUsesMaxCompletionTokensKey() async throws {
