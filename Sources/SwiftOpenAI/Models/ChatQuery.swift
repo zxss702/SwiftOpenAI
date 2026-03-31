@@ -401,7 +401,7 @@ struct AnyCodingKey: CodingKey {
 /// 可编码的任意值
 ///
 /// 支持动态类型的 JSON 编解码。
-public enum AnyCodableValue: Codable, Sendable {
+public enum AnyCodableValue: Codable, Sendable, Hashable, Equatable {
     case string(String)
     case int(Int)
     case double(Double)
