@@ -482,16 +482,24 @@ enum ProviderRequestEncoder {
     }
 
     private static func applyThinking(into body: inout [String: Any], think: Bool?, family: ProviderFamily) {
-        guard let think else { return }
-
         switch family {
         case .minimax:
-            body["reasoning_split"] = think
+            // MiniMax does not expose a no-think switch in its OpenAI-compatible API.
+            // Keep reasoning_split pinned to true so reasoning stays in reasoning_details
+            // instead of falling back to <think> blocks inside content.
+            body.removeValue(forKey: "reasoning_split")
+            mergeObject(
+                into: &body,
+                key: "extra_body",
+                values: ["reasoning_split": true]
+            )
         case .zhipuGLM, .volcengineArk:
+            guard let think else { return }
             body["thinking"] = [
                 "type": think ? "enabled" : "disabled"
             ]
         case .dashscope:
+            guard let think else { return }
             body["enable_thinking"] = think
         case .openai, .moonshot, .genericOpenAICompatible:
             break
@@ -544,6 +552,18 @@ enum ProviderRequestEncoder {
             }
         }
         return merged
+    }
+
+    private static func mergeObject(
+        into body: inout [String: Any],
+        key: String,
+        values: [String: Any]
+    ) {
+        var merged = body[key] as? [String: Any] ?? [:]
+        for (nestedKey, nestedValue) in values {
+            merged[nestedKey] = nestedValue
+        }
+        body[key] = merged
     }
 
     private static func jsonValue<T: Encodable>(_ value: T) throws -> Any {
