@@ -51,79 +51,14 @@ public class OpenAI {
     /// }
     /// ```
     public nonisolated func chatsStream(query: ChatQuery) -> AsyncThrowingStream<ChatStreamResult, Error> {
-        
-        return AsyncThrowingStream { continuation in
+        AsyncThrowingStream { continuation in
+            let configuration = self.configuration
             let task = Task { [configuration] in
                 do {
-                    let request = try await createChatRequest(query: query, configuration: configuration)
-#if canImport(FoundationNetworking)
-                    let (data, response) = try await URLSession.shared.data(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          200...299 ~= httpResponse.statusCode else {
-                        let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-                        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                    let envelopeStream = createChatStreamEnvelopeStream(query: query, configuration: configuration)
+                    for try await envelope in envelopeStream {
+                        continuation.yield(envelope.result)
                     }
-
-                    let responseText = String(data: data, encoding: .utf8) ?? ""
-                    for rawLine in responseText.split(whereSeparator: \.isNewline) {
-                        try Task.checkCancellation()
-                        let line = String(rawLine)
-                        guard !line.isEmpty, !line.hasPrefix(":") else { continue }
-
-                        var dataString = line
-                        if dataString.hasPrefix("data:") {
-                            dataString.removeFirst(5)
-                        }
-                        dataString = dataString.trimmingCharacters(in: .whitespaces)
-                        if dataString == "[DONE]" {
-                            continuation.finish()
-                            return
-                        }
-
-                        let chunk = Data(dataString.utf8)
-                        let streamResult = try JSONDecoder().decode(ChatStreamResult.self, from: chunk)
-                        continuation.yield(streamResult)
-                    }
-#else
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          200...299 ~= httpResponse.statusCode else {
-                        var responseBody = ""
-                        do {
-                            for try await line in bytes.lines {
-                                responseBody += line + "\n"
-                            }
-                        } catch {
-                            responseBody = "无法读取响应内容: \(error)"
-                        }
-                        
-                        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
-                    }
-                    
-                    for try await line in bytes.lines {
-                        try Task.checkCancellation()
-                        guard !line.isEmpty, !line.hasPrefix(":") else { continue }
-                        
-                        var dataString = line
-                        if dataString.hasPrefix("data:") {
-                            dataString.removeFirst(5)
-                        }
-                        dataString = dataString.trimmingCharacters(in: .whitespaces)
-                        
-                        if dataString == "[DONE]" {
-                            continuation.finish()
-                            return
-                        }
-                        
-                        let data = Data(dataString.utf8)
-                        let streamResult = try JSONDecoder().decode(ChatStreamResult.self, from: data)
-                        continuation.yield(streamResult)
-                    }
-#endif
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -151,81 +86,145 @@ public class OpenAI {
     /// print(result.choices.first?.message.content ?? "")
     /// ```
     public func chats(query: ChatQuery) async throws -> ChatCompletionResult {
-        let request = try await createChatRequest(query: query, configuration: configuration)
-        let (data, response) = try await URLSession(configuration: .default).data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              200...299 ~= httpResponse.statusCode else {
-            let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
-        }
-        
-        do {
-            let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
-            return result
-        } catch {
-            throw OpenAIError.decodingError(error)
-        }
+        try await chatCompletionEnvelope(query: query).result
     }
-    
+
+    func chatCompletionEnvelope(query: ChatQuery) async throws -> ChatCompletionEnvelope {
+        try await createChatCompletionEnvelope(query: query, configuration: configuration)
+    }
+
+    func chatsStreamEnvelope(query: ChatQuery) -> AsyncThrowingStream<ChatStreamEnvelope, Error> {
+        createChatStreamEnvelopeStream(query: query, configuration: configuration)
+    }
 }
 
-nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfiguration) async throws -> URLRequest {
-    guard let baseURL = configuration.baseURL else {
-        throw OpenAIError.invalidURL
-    }
-    
-    let url = baseURL.appendingPathComponent("chat/completions")
-    var request = URLRequest(url: url)
-    
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
-    
-    if let organizationID = configuration.organizationID {
-        request.setValue(organizationID, forHTTPHeaderField: "OpenAI-Organization")
+nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfiguration) async throws -> PreparedChatRequest {
+    try ProviderRequestEncoder.makeRequest(query: query, configuration: configuration)
+}
+
+nonisolated func createChatCompletionEnvelope(
+    query: ChatQuery,
+    configuration: OpenAIConfiguration
+) async throws -> ChatCompletionEnvelope {
+    let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
+    let (data, response) = try await URLSession(configuration: .default).data(for: preparedRequest.urlRequest)
+
+    guard let httpResponse = response as? HTTPURLResponse,
+          200...299 ~= httpResponse.statusCode else {
+        let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
     }
 
-    var headers = configuration.extraHeaders ?? [:]
-    if headers["User-Agent"] == nil {
-        headers["User-Agent"] = OpenAIConfiguration.defaultUserAgent
-    }
-    if headers["X-Title"] == nil {
-        headers["X-Title"] = OpenAIConfiguration.defaultXTitle
-    }
-    
-    for (key, value) in headers {
-        request.setValue(value, forHTTPHeaderField: key)
-    }
-    
-    var requestBody: [String: Any] = [:]
-    
     do {
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(query)
-        if let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-            requestBody = jsonObject
-        }
+        let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
+        let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+        return ChatCompletionEnvelope(result: result, metadata: metadata)
     } catch {
         throw OpenAIError.decodingError(error)
     }
-    
-    if let extraBody = configuration.extraBody {
-        for (key, value) in extraBody {
-            requestBody[key] = value
+}
+
+nonisolated func createChatStreamEnvelopeStream(
+    query: ChatQuery,
+    configuration: OpenAIConfiguration
+) -> AsyncThrowingStream<ChatStreamEnvelope, Error> {
+    AsyncThrowingStream { continuation in
+        let task = Task { [configuration] in
+            do {
+                let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
+                var streamState = ProviderStreamNormalizationState()
+#if canImport(FoundationNetworking)
+                let (data, response) = try await URLSession.shared.data(for: preparedRequest.urlRequest)
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      200...299 ~= httpResponse.statusCode else {
+                    let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                }
+
+                let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+                let responseText = String(data: data, encoding: .utf8) ?? ""
+                for rawLine in responseText.split(whereSeparator: \.isNewline) {
+                    try Task.checkCancellation()
+                    let line = String(rawLine)
+                    guard !line.isEmpty, !line.hasPrefix(":") else { continue }
+
+                    var dataString = line
+                    if dataString.hasPrefix("data:") {
+                        dataString.removeFirst(5)
+                    }
+                    dataString = dataString.trimmingCharacters(in: .whitespaces)
+
+                    if dataString == "[DONE]" {
+                        continuation.finish()
+                        return
+                    }
+
+                    let chunkData = Data(dataString.utf8)
+                    let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
+                    let normalizedChunk = ProviderResponseNormalizer.normalize(
+                        streamChunk: decodedChunk,
+                        family: preparedRequest.family,
+                        state: &streamState
+                    )
+                    continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                }
+#else
+                let (bytes, response) = try await URLSession.shared.bytes(for: preparedRequest.urlRequest)
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      200...299 ~= httpResponse.statusCode else {
+                    var responseBody = ""
+                    do {
+                        for try await line in bytes.lines {
+                            responseBody += line + "\n"
+                        }
+                    } catch {
+                        responseBody = "无法读取响应内容: \(error)"
+                    }
+
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                }
+
+                let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+                for try await line in bytes.lines {
+                    try Task.checkCancellation()
+                    guard !line.isEmpty, !line.hasPrefix(":") else { continue }
+
+                    var dataString = line
+                    if dataString.hasPrefix("data:") {
+                        dataString.removeFirst(5)
+                    }
+                    dataString = dataString.trimmingCharacters(in: .whitespaces)
+
+                    if dataString == "[DONE]" {
+                        continuation.finish()
+                        return
+                    }
+
+                    let chunkData = Data(dataString.utf8)
+                    let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
+                    let normalizedChunk = ProviderResponseNormalizer.normalize(
+                        streamChunk: decodedChunk,
+                        family: preparedRequest.family,
+                        state: &streamState
+                    )
+                    continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                }
+#endif
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        continuation.onTermination = { _ in
+            task.cancel()
         }
     }
-    
-    if let queryExtraBody = query.extraBody {
-        for (key, value) in queryExtraBody {
-            requestBody[key] = value.anyValue
-        }
-    }
-    
-    request.httpBody = try JSONSerialization.data(withJSONObject: requestBody, options: [])
-    
-    return request
 }
 
 // MARK: - Configuration
@@ -345,7 +344,7 @@ public struct OpenAIConfiguration : Sendable {
 /// 聊天完成结果（非流式）
 ///
 /// 表示完整的聊天完成响应，包含所有选择、使用情况统计等信息。
-public struct ChatCompletionResult: Codable {
+public struct ChatCompletionResult: Codable, Sendable {
     /// 响应的唯一标识符
     public let id: String
     
@@ -368,7 +367,7 @@ public struct ChatCompletionResult: Codable {
     public let systemFingerprint: String?
     
     /// 聊天完成的单个选择
-    public struct Choice: Codable {
+    public struct Choice: Codable, Sendable {
         /// 选择索引
         public let index: Int
         
@@ -387,7 +386,7 @@ public struct ChatCompletionResult: Codable {
         }
         
         /// 助手消息内容
-        public struct Message: Codable {
+        public struct Message: Codable, Sendable {
             /// 消息角色
             public let role: String
             
@@ -403,6 +402,7 @@ public struct ChatCompletionResult: Codable {
             private enum CodingKeys: String, CodingKey {
                 case role, content, reasoning
                 case reasoningContent = "reasoning_content"
+                case reasoningDetails = "reasoning_details"
                 case toolCalls = "tool_calls"
             }
             
@@ -416,6 +416,8 @@ public struct ChatCompletionResult: Codable {
                     self.reasoning = reasoning
                 } else if let reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent) {
                     self.reasoning = reasoningContent
+                } else if let reasoningDetails = try container.decodeIfPresent([ReasoningDetailPayload].self, forKey: .reasoningDetails) {
+                    self.reasoning = ProviderResponseNormalizer.extractReasoningText(from: reasoningDetails)
                 } else {
                     self.reasoning = nil
                 }
@@ -430,7 +432,7 @@ public struct ChatCompletionResult: Codable {
             }
             
             /// 工具调用信息
-            public struct ToolCall: Codable {
+            public struct ToolCall: Codable, Sendable {
                 /// 工具调用 ID
                 public let id: String
                 
@@ -441,7 +443,7 @@ public struct ChatCompletionResult: Codable {
                 public let function: Function
                 
                 /// 函数调用详情
-                public struct Function: Codable {
+                public struct Function: Codable, Sendable {
                     /// 函数名称
                     public let name: String
                     
@@ -453,7 +455,7 @@ public struct ChatCompletionResult: Codable {
     }
     
     /// Token 使用统计
-    public struct Usage: Codable {
+    public struct Usage: Codable, Sendable {
         /// 提示词使用的 Token 数
         public let promptTokens: Int
         
@@ -462,11 +464,67 @@ public struct ChatCompletionResult: Codable {
         
         /// 总 Token 数
         public let totalTokens: Int
+
+        /// 缓存的 Token 数
+        public let cachedTokens: Int?
+
+        /// 推理过程中使用的 Token 数
+        public let reasoningTokens: Int?
         
         private enum CodingKeys: String, CodingKey {
             case promptTokens = "prompt_tokens"
             case completionTokens = "completion_tokens"
             case totalTokens = "total_tokens"
+            case cachedTokens = "cached_tokens"
+            case reasoningTokens = "reasoning_tokens"
+            case promptTokensDetails = "prompt_tokens_details"
+            case completionTokensDetails = "completion_tokens_details"
+        }
+
+        private struct PromptTokensDetails: Codable {
+            let cachedTokens: Int?
+
+            private enum CodingKeys: String, CodingKey {
+                case cachedTokens = "cached_tokens"
+            }
+        }
+
+        private struct CompletionTokensDetails: Codable {
+            let reasoningTokens: Int?
+
+            private enum CodingKeys: String, CodingKey {
+                case reasoningTokens = "reasoning_tokens"
+            }
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            promptTokens = try container.decodeIfPresent(Int.self, forKey: .promptTokens) ?? 0
+            completionTokens = try container.decodeIfPresent(Int.self, forKey: .completionTokens) ?? 0
+            totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
+
+            if let cachedTokens = try container.decodeIfPresent(Int.self, forKey: .cachedTokens) {
+                self.cachedTokens = cachedTokens
+            } else {
+                let promptDetails = try container.decodeIfPresent(PromptTokensDetails.self, forKey: .promptTokensDetails)
+                self.cachedTokens = promptDetails?.cachedTokens
+            }
+
+            if let reasoningTokens = try container.decodeIfPresent(Int.self, forKey: .reasoningTokens) {
+                self.reasoningTokens = reasoningTokens
+            } else {
+                let completionDetails = try container.decodeIfPresent(CompletionTokensDetails.self, forKey: .completionTokensDetails)
+                self.reasoningTokens = completionDetails?.reasoningTokens
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(promptTokens, forKey: .promptTokens)
+            try container.encode(completionTokens, forKey: .completionTokens)
+            try container.encode(totalTokens, forKey: .totalTokens)
+            try container.encodeIfPresent(cachedTokens, forKey: .cachedTokens)
+            try container.encodeIfPresent(reasoningTokens, forKey: .reasoningTokens)
         }
     }
     
