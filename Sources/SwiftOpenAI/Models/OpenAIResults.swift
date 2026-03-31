@@ -55,16 +55,36 @@ public struct OpenAIChatResult: Sendable {
     
     /// Token 使用统计信息
     public let usage: ChatStreamResult.Choice.UsageInfo?
+
+    /// 响应来自的厂商标识
+    public let providerName: String?
+
+    /// 请求唯一标识
+    public let requestID: String?
+
+    /// 实际使用的模型标识
+    public let resolvedModel: String?
+
+    /// 实际使用的基础路径
+    public let resolvedBasePath: String?
     
     public init(
         fullThinkingText: String,
         fullText: String,
         allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall],
-        usage: ChatStreamResult.Choice.UsageInfo? = nil
+        usage: ChatStreamResult.Choice.UsageInfo? = nil,
+        providerName: String? = nil,
+        requestID: String? = nil,
+        resolvedModel: String? = nil,
+        resolvedBasePath: String? = nil
     ) {
         self.fullThinkingText = fullThinkingText
         self.fullText = fullText
         self.allToolCalls = allToolCalls
         self.usage = usage
+        self.providerName = providerName
+        self.requestID = requestID
+        self.resolvedModel = resolvedModel
+        self.resolvedBasePath = resolvedBasePath
     }
 }
