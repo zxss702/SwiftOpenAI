@@ -67,3 +67,4 @@ fastlane/test_output
 
 .logorythia/lastUserPrompt.txt
 .logorythia/plan.txt
+.DS_Store

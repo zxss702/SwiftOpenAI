@@ -163,13 +163,17 @@ nonisolated func createChatStreamEnvelopeStream(
                     }
 
                     let chunkData = Data(dataString.utf8)
-                    let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
-                    let normalizedChunk = ProviderResponseNormalizer.normalize(
-                        streamChunk: decodedChunk,
-                        family: preparedRequest.family,
-                        state: &streamState
-                    )
-                    continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                    do {
+                        let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
+                        let normalizedChunk = ProviderResponseNormalizer.normalize(
+                            streamChunk: decodedChunk,
+                            family: preparedRequest.family,
+                            state: &streamState
+                        )
+                        continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                    } catch {
+                        throw OpenAIError.invalidResponse(dataString)
+                    }
                 }
 #else
                 let (bytes, response) = try await URLSession.shared.bytes(for: preparedRequest.urlRequest)
@@ -206,13 +210,17 @@ nonisolated func createChatStreamEnvelopeStream(
                     }
 
                     let chunkData = Data(dataString.utf8)
-                    let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
-                    let normalizedChunk = ProviderResponseNormalizer.normalize(
-                        streamChunk: decodedChunk,
-                        family: preparedRequest.family,
-                        state: &streamState
-                    )
-                    continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                    do {
+                        let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
+                        let normalizedChunk = ProviderResponseNormalizer.normalize(
+                            streamChunk: decodedChunk,
+                            family: preparedRequest.family,
+                            state: &streamState
+                        )
+                        continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+                    } catch {
+                        throw OpenAIError.invalidResponse(dataString)
+                    }
                 }
 #endif
                 continuation.finish()
