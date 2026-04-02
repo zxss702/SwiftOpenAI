@@ -195,7 +195,7 @@ nonisolated func createChatStreamEnvelopeStream(
 
                 let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
                 for try await line in bytes.lines {
-                    print(line)
+                    
                     try Task.checkCancellation()
                     guard !line.isEmpty, !line.hasPrefix(":") else { continue }
 
