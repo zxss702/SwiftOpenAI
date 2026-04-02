@@ -122,6 +122,50 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(extraBody["custom_flag"] as? String, "keep-me")
     }
 
+    func testMiniMaxStreamingDefaultsIncludeUsage() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "MiniMax-M2.7",
+                stream: true
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimax.io",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let streamOptions = try XCTUnwrap(body["stream_options"] as? [String: Any])
+        XCTAssertEqual(streamOptions["include_usage"] as? Bool, true)
+    }
+
+    func testMiniMaxStreamingPreservesExistingStreamOptions() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "MiniMax-M2.7",
+                stream: true,
+                extraBody: [
+                    "stream_options": .object([
+                        "custom_flag": .string("keep-me")
+                    ])
+                ]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimaxi.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let streamOptions = try XCTUnwrap(body["stream_options"] as? [String: Any])
+        XCTAssertEqual(streamOptions["include_usage"] as? Bool, true)
+        XCTAssertEqual(streamOptions["custom_flag"] as? String, "keep-me")
+    }
+
     func testOpenAIUsesMaxCompletionTokensKey() async throws {
         let query = ChatQuery(
             messages: [.user("hello")],
@@ -272,6 +316,33 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(result.usage?.promptTokens, 12)
         XCTAssertEqual(result.usage?.cachedTokens, 1)
         XCTAssertEqual(result.usage?.reasoningTokens, 6)
+    }
+
+    func testMiniMaxFinalUsageChunkDecodesWithEmptyChoices() throws {
+        let json = """
+        {
+          "id": "chunk-final",
+          "object": "chat.completion.chunk",
+          "created": 1,
+          "model": "MiniMax-M2.7",
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 2052,
+            "completion_tokens": 89,
+            "total_tokens": 2141,
+            "completion_tokens_details": {
+              "reasoning_tokens": 74
+            }
+          }
+        }
+        """
+
+        let result = try JSONDecoder().decode(ChatStreamResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.choices.count, 0)
+        XCTAssertEqual(result.usage?.promptTokens, 2052)
+        XCTAssertEqual(result.usage?.completionTokens, 89)
+        XCTAssertEqual(result.usage?.totalTokens, 2141)
+        XCTAssertEqual(result.usage?.reasoningTokens, 74)
     }
 
     func testMiniMaxStreamNormalizerConvertsCumulativeDeltas() {

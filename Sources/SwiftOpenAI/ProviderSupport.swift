@@ -325,6 +325,7 @@ enum ProviderRequestEncoder {
         for (key, value) in request.mergedExtraBody {
             body[key] = value.anyValue
         }
+        applyProviderDefaults(into: &body, request: request, family: family)
         applyThinking(into: &body, think: request.think, family: family)
 
         return body
@@ -544,6 +545,25 @@ enum ProviderRequestEncoder {
             }
         }
         return merged
+    }
+
+    private static func applyProviderDefaults(
+        into body: inout [String: Any],
+        request: CanonicalChatRequest,
+        family: ProviderFamily
+    ) {
+        switch family {
+        case .minimax:
+            guard request.stream == true else { return }
+
+            var streamOptions = body["stream_options"] as? [String: Any] ?? [:]
+            if streamOptions["include_usage"] == nil {
+                streamOptions["include_usage"] = true
+            }
+            body["stream_options"] = streamOptions
+        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+            break
+        }
     }
 
     private static func jsonValue<T: Encodable>(_ value: T) throws -> Any {
