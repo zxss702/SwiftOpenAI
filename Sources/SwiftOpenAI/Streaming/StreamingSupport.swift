@@ -145,7 +145,7 @@ nonisolated public func sendMessage(
         
         // 节流处理：判断距离上次发送是否超过 0.2 秒
         let currentTime = Date().timeIntervalSince1970
-        if currentTime - lastSendTime >= 0.2 {
+        if currentTime - lastSendTime >= 0.5 {
             // 时间到了，将当前收集到的缓冲数据取出来发送
             let currentResult = await actorHelper.getResult()
             try await action(currentResult)
