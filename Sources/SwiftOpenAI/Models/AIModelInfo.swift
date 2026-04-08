@@ -88,7 +88,7 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
     case streamingError(String)
     
     /// 无效的响应
-    case invalidResponse(String)
+    case invalidResponse(String, code: Int)
 
     /// 当前厂商不支持此能力
     case providerUnsupported(String)

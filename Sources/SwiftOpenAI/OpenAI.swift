@@ -141,7 +141,7 @@ nonisolated func createChatStreamEnvelopeStream(
                       200...299 ~= httpResponse.statusCode else {
                     let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                    throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                    throw OpenAIError.invalidResponse(responseBody, code: statusCode)
                 }
 
                 let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
@@ -190,7 +190,7 @@ nonisolated func createChatStreamEnvelopeStream(
                     }
 
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                    throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+                    throw OpenAIError.invalidResponse(responseBody, code: statusCode)
                 }
 
                 let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
