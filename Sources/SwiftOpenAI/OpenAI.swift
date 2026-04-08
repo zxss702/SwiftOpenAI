@@ -113,7 +113,7 @@ nonisolated func createChatCompletionEnvelope(
           200...299 ~= httpResponse.statusCode else {
         let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-        throw OpenAIError.invalidResponse("HTTP状态码: \(statusCode), 响应内容: \(responseBody)")
+        throw OpenAIError.invalidResponse(responseBody, code: statusCode)
     }
 
     do {
@@ -220,7 +220,7 @@ nonisolated func createChatStreamEnvelopeStream(
                         )
                         continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
                     } catch {
-                        throw OpenAIError.invalidResponse(dataString)
+                        throw OpenAIError.invalidResponse(dataString, code: (response as? HTTPURLResponse)?.statusCode ?? -1)
                     }
                 }
 #endif

@@ -111,7 +111,7 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
             return "解码错误: \(error.localizedDescription)"
         case .streamingError(let message):
             return "流式传输错误: \(message)"
-        case .invalidResponse(let message):
+        case .invalidResponse(let message, _):
             return "无效的响应: \(message)"
         case .providerUnsupported(let message):
             return "厂商能力不支持: \(message)"
