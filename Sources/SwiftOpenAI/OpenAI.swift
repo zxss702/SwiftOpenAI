@@ -172,7 +172,7 @@ nonisolated func createChatStreamEnvelopeStream(
                         )
                         continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
                     } catch {
-                        throw OpenAIError.invalidResponse(responseBody, code: statusCode)
+                        throw OpenAIError.invalidResponse(dataString, code: (response as? HTTPURLResponse)?.statusCode ?? -1)
                     }
                 }
 #else
