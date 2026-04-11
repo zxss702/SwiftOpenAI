@@ -137,7 +137,7 @@ nonisolated func createChatStreamEnvelopeStream(
 #if canImport(FoundationNetworking)
                 // Static Linux SDK + FoundationNetworking may crash when using URLSession.shared.
                 // Use an isolated session here to avoid libcurl multi-handle lifetime issues.
-                let session = URLSession(configuration: .default)
+                let session = URLSession(configuration: .ephemeral)
                 let (data, response) = try await session.data(for: preparedRequest.urlRequest)
 
                 guard let httpResponse = response as? HTTPURLResponse,
