@@ -425,7 +425,7 @@ final class ExtendedFeaturesTests: XCTestCase {
         let streamingError = OpenAIError.streamingError("连接中断")
         XCTAssertTrue(streamingError.errorDescription!.contains("连接中断"))
         
-        let invalidResponseError = OpenAIError.invalidResponse("测试错误")
+        let invalidResponseError = OpenAIError.invalidResponse("测试错误", code: 1234)
         XCTAssertNotNil(invalidResponseError.errorDescription)
     }
     

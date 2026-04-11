@@ -2,6 +2,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import AsyncHTTPClient
+import NIOCore
+import NIOHTTP1
 
 // MARK: - OpenAI Client
 
@@ -102,23 +105,87 @@ nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfig
     try ProviderRequestEncoder.makeRequest(query: query, configuration: configuration)
 }
 
+private let openAIRequestTimeout: TimeAmount = .seconds(300)
+private let openAIResponseBodyLimit = 64 * 1024 * 1024
+
+nonisolated private func executePreparedRequest(_ preparedRequest: PreparedChatRequest) async throws -> HTTPClientResponse {
+    let request = try makeHTTPClientRequest(from: preparedRequest.urlRequest)
+    return try await HTTPClient.shared.execute(request, timeout: openAIRequestTimeout)
+}
+
+nonisolated private func makeHTTPClientRequest(from urlRequest: URLRequest) throws -> HTTPClientRequest {
+    guard let url = urlRequest.url else {
+        throw OpenAIError.invalidURL
+    }
+
+    var request = HTTPClientRequest(url: url.absoluteString)
+    request.method = httpMethod(from: urlRequest.httpMethod)
+
+    if let headers = urlRequest.allHTTPHeaderFields {
+        for (name, value) in headers {
+            request.headers.add(name: name, value: value)
+        }
+    }
+
+    if let body = urlRequest.httpBody {
+        request.body = .bytes(body)
+    }
+
+    return request
+}
+
+nonisolated private func httpMethod(from method: String?) -> HTTPMethod {
+    switch method?.uppercased() {
+    case "DELETE":
+        return .DELETE
+    case "GET":
+        return .GET
+    case "HEAD":
+        return .HEAD
+    case "PATCH":
+        return .PATCH
+    case "POST":
+        return .POST
+    case "PUT":
+        return .PUT
+    default:
+        return .GET
+    }
+}
+
+nonisolated private func collectBodyData(from body: HTTPClientResponse.Body?) async throws -> Data {
+    guard let body else { return Data() }
+    let buffer = try await body.collect(upTo: openAIResponseBodyLimit)
+    guard let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) else {
+        return Data()
+    }
+    return Data(bytes)
+}
+
+nonisolated private func responseBodyString(from body: HTTPClientResponse.Body?) async throws -> String {
+    let data = try await collectBodyData(from: body)
+    return String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+}
+
 nonisolated func createChatCompletionEnvelope(
     query: ChatQuery,
     configuration: OpenAIConfiguration
 ) async throws -> ChatCompletionEnvelope {
     let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-    let (data, response) = try await URLSession(configuration: .default).data(for: preparedRequest.urlRequest)
+    let response = try await executePreparedRequest(preparedRequest)
 
-    guard let httpResponse = response as? HTTPURLResponse,
-          200...299 ~= httpResponse.statusCode else {
-        let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+    guard (200...299).contains(Int(response.status.code)) else {
+        let responseBody = try await responseBodyString(from: response.body)
+        let statusCode = Int(response.status.code)
         throw OpenAIError.invalidResponse(responseBody, code: statusCode)
     }
 
     do {
+        let data = try await collectBodyData(from: response.body)
         let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
-        let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+        let metadata = preparedRequest.metadata.withRequestID(
+            ProviderResponseNormalizer.requestID(from: response.headers)
+        )
         return ChatCompletionEnvelope(result: result, metadata: metadata)
     } catch {
         throw OpenAIError.decodingError(error)
@@ -134,99 +201,49 @@ nonisolated func createChatStreamEnvelopeStream(
             do {
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
                 var streamState = ProviderStreamNormalizationState()
-#if canImport(FoundationNetworking)
-                // Static Linux SDK + FoundationNetworking may crash when using URLSession.shared.
-                // Use an isolated session here to avoid libcurl multi-handle lifetime issues.
-                let session = URLSession(configuration: .ephemeral)
-                let (data, response) = try await session.data(for: preparedRequest.urlRequest)
+                let response = try await executePreparedRequest(preparedRequest)
 
-                guard let httpResponse = response as? HTTPURLResponse,
-                      200...299 ~= httpResponse.statusCode else {
-                    let responseBody = String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                guard (200...299).contains(Int(response.status.code)) else {
+                    let responseBody = try await responseBodyString(from: response.body)
+                    let statusCode = Int(response.status.code)
                     throw OpenAIError.invalidResponse(responseBody, code: statusCode)
                 }
 
-                let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
-                let responseText = String(data: data, encoding: .utf8) ?? ""
-                for rawLine in responseText.split(whereSeparator: \.isNewline) {
+                let metadata = preparedRequest.metadata.withRequestID(
+                    ProviderResponseNormalizer.requestID(from: response.headers)
+                )
+                let statusCode = Int(response.status.code)
+
+                var pendingText = ""
+                for try await part in response.body {
                     try Task.checkCancellation()
-                    let line = String(rawLine)
-                    guard !line.isEmpty, !line.hasPrefix(":") else { continue }
-
-                    var dataString = line
-                    if dataString.hasPrefix("data:") {
-                        dataString.removeFirst(5)
-                    }
-                    dataString = dataString.trimmingCharacters(in: .whitespaces)
-
-                    if dataString == "[DONE]" {
-                        continuation.finish()
+                    let text = String(buffer: part)
+                    if try processSSEText(
+                        text,
+                        pendingText: &pendingText,
+                        statusCode: statusCode,
+                        metadata: metadata,
+                        family: preparedRequest.family,
+                        state: &streamState,
+                        continuation: continuation
+                    ) {
                         return
                     }
-
-                    let chunkData = Data(dataString.utf8)
-                    do {
-                        let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
-                        let normalizedChunk = ProviderResponseNormalizer.normalize(
-                            streamChunk: decodedChunk,
-                            family: preparedRequest.family,
-                            state: &streamState
-                        )
-                        continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
-                    } catch {
-                        throw OpenAIError.invalidResponse(dataString, code: (response as? HTTPURLResponse)?.statusCode ?? -1)
-                    }
-                }
-#else
-                let (bytes, response) = try await URLSession.shared.bytes(for: preparedRequest.urlRequest)
-
-                guard let httpResponse = response as? HTTPURLResponse,
-                      200...299 ~= httpResponse.statusCode else {
-                    var responseBody = ""
-                    do {
-                        for try await line in bytes.lines {
-                            responseBody += line + "\n"
-                        }
-                    } catch {
-                        responseBody = "无法读取响应内容: \(error)"
-                    }
-
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                    throw OpenAIError.invalidResponse(responseBody, code: statusCode)
                 }
 
-                let metadata = preparedRequest.metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
-                for try await line in bytes.lines {
-                    
-                    try Task.checkCancellation()
-                    guard !line.isEmpty, !line.hasPrefix(":") else { continue }
-
-                    var dataString = line
-                    if dataString.hasPrefix("data:") {
-                        dataString.removeFirst(5)
-                    }
-                    dataString = dataString.trimmingCharacters(in: .whitespaces)
-
-                    if dataString == "[DONE]" {
-                        continuation.finish()
-                        return
-                    }
-
-                    let chunkData = Data(dataString.utf8)
-                    do {
-                        let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
-                        let normalizedChunk = ProviderResponseNormalizer.normalize(
-                            streamChunk: decodedChunk,
-                            family: preparedRequest.family,
-                            state: &streamState
-                        )
-                        continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
-                    } catch {
-                        throw OpenAIError.invalidResponse(dataString, code: (response as? HTTPURLResponse)?.statusCode ?? -1)
-                    }
+                if try processSSEText(
+                    "",
+                    pendingText: &pendingText,
+                    statusCode: statusCode,
+                    metadata: metadata,
+                    family: preparedRequest.family,
+                    state: &streamState,
+                    continuation: continuation,
+                    finalize: true
+                ) {
+                    return
                 }
-#endif
+
                 continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
@@ -236,6 +253,92 @@ nonisolated func createChatStreamEnvelopeStream(
         continuation.onTermination = { _ in
             task.cancel()
         }
+    }
+}
+
+@discardableResult
+nonisolated private func processSSEText(
+    _ text: String,
+    pendingText: inout String,
+    statusCode: Int,
+    metadata: ChatResponseMetadata,
+    family: ProviderFamily,
+    state: inout ProviderStreamNormalizationState,
+    continuation: AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation,
+    finalize: Bool = false
+) throws -> Bool {
+    pendingText += text
+
+    while let newlineIndex = pendingText.firstIndex(of: "\n") {
+        var line = String(pendingText[..<newlineIndex])
+        pendingText.removeSubrange(...newlineIndex)
+        if line.hasSuffix("\r") {
+            line.removeLast()
+        }
+        if try processSSELine(
+            line,
+            statusCode: statusCode,
+            metadata: metadata,
+            family: family,
+            state: &state,
+            continuation: continuation
+        ) {
+            return true
+        }
+    }
+
+    if finalize, !pendingText.isEmpty {
+        let line = pendingText
+        pendingText.removeAll(keepingCapacity: false)
+        if try processSSELine(
+            line,
+            statusCode: statusCode,
+            metadata: metadata,
+            family: family,
+            state: &state,
+            continuation: continuation
+        ) {
+            return true
+        }
+    }
+
+    return false
+}
+
+@discardableResult
+nonisolated private func processSSELine(
+    _ line: String,
+    statusCode: Int,
+    metadata: ChatResponseMetadata,
+    family: ProviderFamily,
+    state: inout ProviderStreamNormalizationState,
+    continuation: AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation
+) throws -> Bool {
+    guard !line.isEmpty, !line.hasPrefix(":") else { return false }
+
+    var dataString = line
+    if dataString.hasPrefix("data:") {
+        dataString.removeFirst(5)
+    }
+    dataString = dataString.trimmingCharacters(in: .whitespaces)
+
+    if dataString == "[DONE]" {
+        continuation.finish()
+        return true
+    }
+
+    let chunkData = Data(dataString.utf8)
+    do {
+        let decodedChunk = try JSONDecoder().decode(ChatStreamResult.self, from: chunkData)
+        let normalizedChunk = ProviderResponseNormalizer.normalize(
+            streamChunk: decodedChunk,
+            family: family,
+            state: &state
+        )
+        continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
+        return false
+    } catch {
+        throw OpenAIError.invalidResponse(dataString, code: statusCode)
     }
 }
 

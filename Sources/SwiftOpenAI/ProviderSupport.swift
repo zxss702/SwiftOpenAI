@@ -2,6 +2,8 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import AsyncHTTPClient
+import NIOHTTP1
 
 enum ProviderFamily: String, Sendable {
     case openai
@@ -591,6 +593,21 @@ enum ProviderResponseNormalizer {
         ]
         for candidate in candidates {
             if let value = response.value(forHTTPHeaderField: candidate), !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    static func requestID(from headers: HTTPHeaders) -> String? {
+        let candidates = [
+            "x-request-id",
+            "request-id",
+            "x-req-id",
+            "x-b3-traceid"
+        ]
+        for candidate in candidates {
+            if let value = headers[candidate].first, !value.isEmpty {
                 return value
             }
         }
