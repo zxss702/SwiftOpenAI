@@ -135,7 +135,10 @@ nonisolated func createChatStreamEnvelopeStream(
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
                 var streamState = ProviderStreamNormalizationState()
 #if canImport(FoundationNetworking)
-                let (data, response) = try await URLSession.shared.data(for: preparedRequest.urlRequest)
+                // Static Linux SDK + FoundationNetworking may crash when using URLSession.shared.
+                // Use an isolated session here to avoid libcurl multi-handle lifetime issues.
+                let session = URLSession(configuration: .default)
+                let (data, response) = try await session.data(for: preparedRequest.urlRequest)
 
                 guard let httpResponse = response as? HTTPURLResponse,
                       200...299 ~= httpResponse.statusCode else {
