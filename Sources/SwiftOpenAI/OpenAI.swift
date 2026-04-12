@@ -1,10 +1,12 @@
-import Foundation
+﻿import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if !os(Windows)
 import AsyncHTTPClient
 import NIOCore
 import NIOHTTP1
+#endif
 
 // MARK: - OpenAI Client
 
@@ -105,6 +107,7 @@ nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfig
     try ProviderRequestEncoder.makeRequest(query: query, configuration: configuration)
 }
 
+#if !os(Windows)
 private let openAIRequestTimeout: TimeAmount = .seconds(300)
 private let openAIResponseBodyLimit = 64 * 1024 * 1024
 
@@ -255,6 +258,156 @@ nonisolated func createChatStreamEnvelopeStream(
         }
     }
 }
+#else /* Windows */
+
+final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    typealias Continuation = AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation
+    
+    let continuation: Continuation
+    var pendingText: String = ""
+    var statusCode: Int = 0
+    var metadata: ChatResponseMetadata
+    var family: ProviderFamily
+    var streamState = ProviderStreamNormalizationState()
+    var receivedResponse = false
+    
+    init(continuation: Continuation, metadata: ChatResponseMetadata, family: ProviderFamily) {
+        self.continuation = continuation
+        self.metadata = metadata
+        self.family = family
+    }
+    
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let httpResponse = response as? HTTPURLResponse {
+            receivedResponse = true
+            statusCode = httpResponse.statusCode
+            metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+        }
+        completionHandler(.allow)
+    }
+    
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard receivedResponse else { return }
+        let text = String(data: data, encoding: .utf8) ?? ""
+        if !(200...299).contains(statusCode) {
+            pendingText += text
+            return
+        }
+        
+        do {
+            let finished = try processSSEText(
+                text,
+                pendingText: &pendingText,
+                statusCode: statusCode,
+                metadata: metadata,
+                family: family,
+                state: &streamState,
+                continuation: continuation
+            )
+            if finished {
+                dataTask.cancel()
+            }
+        } catch {
+            dataTask.cancel()
+            session.invalidateAndCancel()
+            continuation.finish(throwing: error)
+        }
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            continuation.finish(throwing: error)
+            return
+        }
+        
+        if !(200...299).contains(statusCode) {
+            continuation.finish(throwing: OpenAIError.invalidResponse(pendingText, code: statusCode))
+            return
+        }
+        
+        do {
+            let _ = try processSSEText(
+                "",
+                pendingText: &pendingText,
+                statusCode: statusCode,
+                metadata: metadata,
+                family: family,
+                state: &streamState,
+                continuation: continuation,
+                finalize: true
+            )
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+        }
+    }
+}
+
+nonisolated func createChatCompletionEnvelope(
+    query: ChatQuery,
+    configuration: OpenAIConfiguration
+) async throws -> ChatCompletionEnvelope {
+    let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
+    
+    return try await withCheckedThrowingContinuation { continuation in
+        let task = URLSession.shared.dataTask(with: preparedRequest.urlRequest) { data, response, error in
+            if let error = error {
+                continuation.resume(throwing: error)
+                return
+            }
+            guard let data = data, let httpResponse = response as? HTTPURLResponse else {
+                continuation.resume(throwing: OpenAIError.invalidResponse("Invalid URLResponse type", code: 0))
+                return
+            }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
+                continuation.resume(throwing: OpenAIError.invalidResponse(responseBody, code: httpResponse.statusCode))
+                return
+            }
+
+            do {
+                let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
+                let metadata = preparedRequest.metadata.withRequestID(
+                    ProviderResponseNormalizer.requestID(from: httpResponse)
+                )
+                continuation.resume(returning: ChatCompletionEnvelope(result: result, metadata: metadata))
+            } catch {
+                continuation.resume(throwing: OpenAIError.decodingError(error))
+            }
+        }
+        task.resume()
+    }
+}
+
+nonisolated func createChatStreamEnvelopeStream(
+    query: ChatQuery,
+    configuration: OpenAIConfiguration
+) -> AsyncThrowingStream<ChatStreamEnvelope, Error> {
+    AsyncThrowingStream { continuation in
+        let localTask = Task {
+            do {
+                let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
+                
+                let delegate = ChatStreamDelegate(
+                    continuation: continuation,
+                    metadata: preparedRequest.metadata,
+                    family: preparedRequest.family
+                )
+                let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+                let dataTask = session.dataTask(with: preparedRequest.urlRequest)
+                dataTask.resume()
+                
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in
+            localTask.cancel()
+        }
+    }
+}
+
+#endif
 
 @discardableResult
 nonisolated private func processSSEText(

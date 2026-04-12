@@ -2,8 +2,10 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if !os(Windows)
 import AsyncHTTPClient
 import NIOHTTP1
+#endif
 
 enum ProviderFamily: String, Sendable {
     case openai
@@ -599,6 +601,7 @@ enum ProviderResponseNormalizer {
         return nil
     }
 
+    #if !os(Windows)
     static func requestID(from headers: HTTPHeaders) -> String? {
         let candidates = [
             "x-request-id",
@@ -613,6 +616,7 @@ enum ProviderResponseNormalizer {
         }
         return nil
     }
+    #endif
 
     static func normalize(
         streamChunk: ChatStreamResult,
