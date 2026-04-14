@@ -35,11 +35,11 @@ enum ProviderFamily: String, Sendable {
 
     var assistantReasoningEncoding: AssistantReasoningEncoding {
         switch self {
-        case .moonshot:
-            return .omit
+        // case .moonshot:
+        //     return .omit
         case .minimax:
             return .reasoningDetails
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot:
             return .reasoningContent
         }
     }
