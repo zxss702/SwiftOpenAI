@@ -63,110 +63,53 @@ nonisolated public func sendMessage(
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
-    let actorHelper = OpenAISendMessageValueHelper()
-    let resolvedModelInfo = modelInfo
-    
-    let configuration = OpenAIConfiguration(
-        token: resolvedModelInfo.token,
-        host: resolvedModelInfo.host,
-        port: resolvedModelInfo.port,
-        scheme: resolvedModelInfo.scheme,
-        basePath: resolvedModelInfo.basePath,
-        extraHeaders: extraHeaders
-    )
-    
-    let openAI = OpenAI(configuration: configuration)
-    
-    let query = ChatQuery(
-        messages: messages,
-        model: resolvedModelInfo.modelID,
-        frequencyPenalty: frequencyPenalty,
-        maxCompletionTokens: maxCompletionTokens,
-        n: n,
-        parallelToolCalls: parallelToolCalls,
-        prediction: prediction,
-        presencePenalty: presencePenalty,
-        responseFormat: responseFormat,
-        stop: stop,
-        temperature: temperature,
-        toolChoice: toolChoice,
-        tools: tools?.map { $0.asChatCompletionTool },
-        topP: topP,
-        user: user,
-        stream: stream,
-        think: think,
-        extraBody: extraBody
-    )
-    
-    var lastSendTime = Date().timeIntervalSince1970
-    var responseMetadata = ChatResponseMetadata(
-        providerName: ProviderFamilyResolver.resolve(host: resolvedModelInfo.host).providerName,
-        requestID: nil,
-        resolvedModel: resolvedModelInfo.modelID,
-        resolvedBasePath: resolvedModelInfo.basePath ?? "/v1"
-    )
-    
-    for try await envelope in openAI.chatsStreamEnvelope(query: query) {
-        try Task.checkCancellation()
-        let result = envelope.result
-        responseMetadata = envelope.metadata
-        
-        // 捕获 usage 信息（通常在最后一个 chunk 中返回）
-        if let usage = result.usage ?? result.choices.first?.usage {
-            await actorHelper.setUsage(usage)
-        }
-        
-        if let choice = result.choices.first {
-            await actorHelper.setText(
-                thinkingText: choice.delta.reasoning ?? "",
-                text: choice.delta.content ?? ""
-            )
-            
-            if let toolCalls = choice.delta.toolCalls {
-                for call in toolCalls {
-                    if let index = await actorHelper.allToolCalls.firstIndex(where: { $0.index == call.index }) {
-                        let existingCall = await actorHelper.allToolCalls[index]
-                        let updatedCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
-                            index: existingCall.index,
-                            id: existingCall.id ?? call.id,
-                            type: existingCall.type ?? call.type,
-                            function: ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall.ChoiceDeltaToolCallFunction(
-                                name: (existingCall.function?.name ?? "") + (call.function?.name ?? ""),
-                                arguments: (existingCall.function?.arguments ?? "") + (call.function?.arguments ?? "")
-                            )
-                        )
-                        await actorHelper.setAllToolCalls(index: index, call: updatedCall)
-                    } else {
-                        await actorHelper.appendAllToolCalls(call)
-                    }
-                }
-            }
-        }
-        
-        // 节流处理：判断距离上次发送是否超过 0.2 秒
-        let currentTime = Date().timeIntervalSince1970
-        if currentTime - lastSendTime >= 0.5 {
-            // 时间到了，将当前收集到的缓冲数据取出来发送
-            let currentResult = await actorHelper.getResult()
-            try await action(currentResult)
-            lastSendTime = currentTime
-        }
+    switch modelInfo {
+    case .completions(let completionsInfo):
+        return try await sendCompletionsMessage(
+            modelInfo: completionsInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools,
+            topP: topP,
+            user: user,
+            stream: stream,
+            think: think,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders,
+            action: action
+        )
+    case .codex(let codexInfo):
+        return try await sendCodexResponsesMessage(
+            modelInfo: codexInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools?.map(\.asChatCompletionTool),
+            topP: topP,
+            user: user,
+            think: think,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders,
+            action: action
+        )
     }
-    
-    // 网络流接收完毕后，把最后残余的（不足0.2秒的）文本缓冲吐出去
-    let finalResult = await actorHelper.getResult()
-    try await action(finalResult)
-    
-    return await OpenAIChatResult(
-        fullThinkingText: actorHelper.fullThinkingText,
-        fullText: actorHelper.fullText,
-        allToolCalls: actorHelper.allToolCalls,
-        usage: await actorHelper.usage,
-        providerName: responseMetadata.providerName,
-        requestID: responseMetadata.requestID,
-        resolvedModel: responseMetadata.resolvedModel,
-        resolvedBasePath: responseMetadata.resolvedBasePath
-    )
 }
 
 /// 发送聊天消息（非流式）
@@ -191,6 +134,195 @@ nonisolated public func sendMessageSync(
     think: Bool? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil
+) async throws -> OpenAIChatResult {
+    switch modelInfo {
+    case .completions(let completionsInfo):
+        return try await sendCompletionsMessageSync(
+            modelInfo: completionsInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools,
+            topP: topP,
+            user: user,
+            think: think,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders
+        )
+    case .codex(let codexInfo):
+        return try await sendCodexResponsesMessage(
+            modelInfo: codexInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools?.map(\.asChatCompletionTool),
+            topP: topP,
+            user: user,
+            think: think,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders
+        ) { _ in }
+    }
+}
+
+private nonisolated func sendCompletionsMessage(
+    modelInfo: AIModelInfoValue.CompletionsInfo,
+    messages: [ChatQuery.ChatCompletionMessageParam],
+    frequencyPenalty: Double?,
+    maxCompletionTokens: Int?,
+    n: Int?,
+    parallelToolCalls: Bool?,
+    prediction: ChatQuery.PredictedOutputConfig?,
+    presencePenalty: Double?,
+    responseFormat: ChatQuery.ResponseFormat?,
+    stop: ChatQuery.Stop?,
+    temperature: Double?,
+    toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
+    tools: [any OpenAIToolConvertible]?,
+    topP: Double?,
+    user: String?,
+    stream: Bool,
+    think: Bool?,
+    extraBody: [String: AnyCodableValue]?,
+    extraHeaders: [String: String]?,
+    action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
+) async throws -> OpenAIChatResult {
+    let actorHelper = OpenAISendMessageValueHelper()
+
+    let configuration = OpenAIConfiguration(
+        token: modelInfo.token,
+        host: modelInfo.host,
+        port: modelInfo.port,
+        scheme: modelInfo.scheme,
+        basePath: modelInfo.basePath,
+        extraHeaders: extraHeaders
+    )
+
+    let openAI = OpenAI(configuration: configuration)
+
+    let query = ChatQuery(
+        messages: messages,
+        model: modelInfo.modelID,
+        frequencyPenalty: frequencyPenalty,
+        maxCompletionTokens: maxCompletionTokens,
+        n: n,
+        parallelToolCalls: parallelToolCalls,
+        prediction: prediction,
+        presencePenalty: presencePenalty,
+        responseFormat: responseFormat,
+        stop: stop,
+        temperature: temperature,
+        toolChoice: toolChoice,
+        tools: tools?.map { $0.asChatCompletionTool },
+        topP: topP,
+        user: user,
+        stream: stream,
+        think: think,
+        extraBody: extraBody
+    )
+
+    var lastSendTime = Date().timeIntervalSince1970
+    var responseMetadata = ChatResponseMetadata(
+        providerName: ProviderFamilyResolver.resolve(host: modelInfo.host).providerName,
+        requestID: nil,
+        resolvedModel: modelInfo.modelID,
+        resolvedBasePath: modelInfo.basePath ?? "/v1"
+    )
+
+    for try await envelope in openAI.chatsStreamEnvelope(query: query) {
+        try Task.checkCancellation()
+        let result = envelope.result
+        responseMetadata = envelope.metadata
+
+        if let usage = result.usage ?? result.choices.first?.usage {
+            await actorHelper.setUsage(usage)
+        }
+
+        if let choice = result.choices.first {
+            await actorHelper.setText(
+                thinkingText: choice.delta.reasoning ?? "",
+                text: choice.delta.content ?? ""
+            )
+
+            if let toolCalls = choice.delta.toolCalls {
+                for call in toolCalls {
+                    if let index = await actorHelper.allToolCalls.firstIndex(where: { $0.index == call.index }) {
+                        let existingCall = await actorHelper.allToolCalls[index]
+                        let updatedCall = ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall(
+                            index: existingCall.index,
+                            id: existingCall.id ?? call.id,
+                            type: existingCall.type ?? call.type,
+                            function: .init(
+                                name: (existingCall.function?.name ?? "") + (call.function?.name ?? ""),
+                                arguments: (existingCall.function?.arguments ?? "") + (call.function?.arguments ?? "")
+                            )
+                        )
+                        await actorHelper.setAllToolCalls(index: index, call: updatedCall)
+                    } else {
+                        await actorHelper.appendAllToolCalls(call)
+                    }
+                }
+            }
+        }
+
+        let currentTime = Date().timeIntervalSince1970
+        if currentTime - lastSendTime >= 0.5 {
+            let currentResult = await actorHelper.getResult()
+            try await action(currentResult)
+            lastSendTime = currentTime
+        }
+    }
+
+    let finalResult = await actorHelper.getResult()
+    try await action(finalResult)
+
+    return await OpenAIChatResult(
+        fullThinkingText: actorHelper.fullThinkingText,
+        fullText: actorHelper.fullText,
+        allToolCalls: actorHelper.allToolCalls,
+        usage: await actorHelper.usage,
+        providerName: responseMetadata.providerName,
+        requestID: responseMetadata.requestID,
+        resolvedModel: responseMetadata.resolvedModel,
+        resolvedBasePath: responseMetadata.resolvedBasePath
+    )
+}
+
+private nonisolated func sendCompletionsMessageSync(
+    modelInfo: AIModelInfoValue.CompletionsInfo,
+    messages: [ChatQuery.ChatCompletionMessageParam],
+    frequencyPenalty: Double?,
+    maxCompletionTokens: Int?,
+    n: Int?,
+    parallelToolCalls: Bool?,
+    prediction: ChatQuery.PredictedOutputConfig?,
+    presencePenalty: Double?,
+    responseFormat: ChatQuery.ResponseFormat?,
+    stop: ChatQuery.Stop?,
+    temperature: Double?,
+    toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
+    tools: [any OpenAIToolConvertible]?,
+    topP: Double?,
+    user: String?,
+    think: Bool?,
+    extraBody: [String: AnyCodableValue]?,
+    extraHeaders: [String: String]?
 ) async throws -> OpenAIChatResult {
     let configuration = OpenAIConfiguration(
         token: modelInfo.token,
