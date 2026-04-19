@@ -37,11 +37,11 @@ enum ProviderFamily: String, Sendable {
 
     var assistantReasoningEncoding: AssistantReasoningEncoding {
         switch self {
-        case .moonshot:
-            return .omit
+        // case .moonshot: // 这个是一般openAI兼容的。
+        //     return .omit
         case .minimax:
             return .reasoningDetails
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot:
             return .reasoningContent
         }
     }
