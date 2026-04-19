@@ -13,7 +13,7 @@ import NIOHTTP1
 private let codexResponsesRequestTimeout: TimeAmount = .seconds(300)
 private let codexResponsesBodyLimit = 64 * 1024 * 1024
 
-private struct CodexResponsesStreamState {
+struct CodexResponsesStreamState {
     var pendingText: String = ""
     var usage: ChatStreamResult.Choice.UsageInfo?
     var responseID: String?
@@ -133,7 +133,7 @@ nonisolated func sendCodexResponsesMessage(
     )
 }
 
-private nonisolated func makeCodexResponsesRequest(
+nonisolated func makeCodexResponsesRequest(
     modelInfo: AIModelInfoValue.CodexInfo,
     messages: [ChatQuery.ChatCompletionMessageParam],
     frequencyPenalty: Double?,
@@ -155,6 +155,57 @@ private nonisolated func makeCodexResponsesRequest(
     }
 
     let url = appendResponsesPath(to: baseURL)
+    let body = try makeCodexResponsesRequestBody(
+        modelInfo: modelInfo,
+        messages: messages,
+        frequencyPenalty: frequencyPenalty,
+        maxCompletionTokens: maxCompletionTokens,
+        parallelToolCalls: parallelToolCalls,
+        presencePenalty: presencePenalty,
+        responseFormat: responseFormat,
+        stop: stop,
+        temperature: temperature,
+        toolChoice: toolChoice,
+        tools: tools,
+        topP: topP,
+        think: think,
+        extraBody: extraBody
+    )
+
+    var request = HTTPClientRequest(url: url.absoluteString)
+    request.method = .POST
+    request.headers.add(name: "Content-Type", value: "application/json")
+    request.headers.add(name: "Accept", value: "text/event-stream")
+    request.headers.add(name: "User-Agent", value: OpenAIConfiguration.defaultUserAgent)
+    request.headers.add(name: "X-Title", value: OpenAIConfiguration.defaultXTitle)
+
+    for (key, value) in extraHeaders ?? [:] {
+        request.headers.replaceOrAdd(name: key, value: value)
+    }
+    for (key, value) in modelInfo.defaultHeaders {
+        request.headers.replaceOrAdd(name: key, value: value)
+    }
+
+    request.body = .bytes(try JSONSerialization.data(withJSONObject: body, options: []))
+    return request
+}
+
+nonisolated func makeCodexResponsesRequestBody(
+    modelInfo: AIModelInfoValue.CodexInfo,
+    messages: [ChatQuery.ChatCompletionMessageParam],
+    frequencyPenalty: Double?,
+    maxCompletionTokens: Int?,
+    parallelToolCalls: Bool?,
+    presencePenalty: Double?,
+    responseFormat: ChatQuery.ResponseFormat?,
+    stop: ChatQuery.Stop?,
+    temperature: Double?,
+    toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
+    tools: [ChatQuery.ChatCompletionToolParam]?,
+    topP: Double?,
+    think: Bool?,
+    extraBody: [String: AnyCodableValue]?
+) throws -> [String: Any] {
     var body: [String: Any] = [
         "model": modelInfo.modelID,
         "input": try encodeResponsesInputItems(messages),
@@ -197,30 +248,16 @@ private nonisolated func makeCodexResponsesRequest(
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
     }
+
     body["model"] = modelInfo.modelID
     body["input"] = try encodeResponsesInputItems(messages)
     body["stream"] = true
     body["store"] = false
 
-    var request = HTTPClientRequest(url: url.absoluteString)
-    request.method = .POST
-    request.headers.add(name: "Content-Type", value: "application/json")
-    request.headers.add(name: "Accept", value: "text/event-stream")
-    request.headers.add(name: "User-Agent", value: OpenAIConfiguration.defaultUserAgent)
-    request.headers.add(name: "X-Title", value: OpenAIConfiguration.defaultXTitle)
-
-    for (key, value) in extraHeaders ?? [:] {
-        request.headers.replaceOrAdd(name: key, value: value)
-    }
-    for (key, value) in modelInfo.defaultHeaders {
-        request.headers.replaceOrAdd(name: key, value: value)
-    }
-
-    request.body = .bytes(try JSONSerialization.data(withJSONObject: body, options: []))
-    return request
+    return body
 }
 
-private nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
+nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
     var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
     var path = components.path
     if path.hasSuffix("/") {
@@ -234,7 +271,7 @@ private nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
     return components.url ?? baseURL
 }
 
-private nonisolated func encodeResponsesInputItems(
+nonisolated func encodeResponsesInputItems(
     _ messages: [ChatQuery.ChatCompletionMessageParam]
 ) throws -> [[String: Any]] {
     try messages.flatMap { message -> [[String: Any]] in
@@ -456,7 +493,7 @@ private nonisolated func codexResponseBodyString(
     return String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
 }
 
-private nonisolated func processCodexResponsesSSEText(
+nonisolated func processCodexResponsesSSEText(
     _ text: String,
     actorHelper: OpenAISendMessageValueHelper,
     state: inout CodexResponsesStreamState,
@@ -658,7 +695,7 @@ private nonisolated func applyCodexOutputItem(
     }
 }
 
-private nonisolated func makeUsageInfo(
+nonisolated func makeUsageInfo(
     from usage: [String: Any]
 ) -> ChatStreamResult.Choice.UsageInfo {
     let promptDetails = usage["input_tokens_details"] as? [String: Any]
