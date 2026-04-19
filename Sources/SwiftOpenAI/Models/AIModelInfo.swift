@@ -7,6 +7,24 @@ public enum AIModelWireAPI: String, Codable, Sendable, Hashable {
     case codexResponses
 }
 
+public enum OpenAIReasoningEffort: String, Codable, Sendable, Hashable, CaseIterable {
+    case none
+    case minimal
+    case low
+    case medium
+    case high
+    case xhigh
+
+    public var enablesReasoning: Bool {
+        self != .none
+    }
+
+    public static func fromLegacyThink(_ think: Bool?) -> Self? {
+        guard let think else { return nil }
+        return think ? .medium : OpenAIReasoningEffort.none
+    }
+}
+
 /// AI 模型配置信息
 ///
 /// 对外统一暴露为一个值类型，但内部区分 `chat/completions`
@@ -193,7 +211,7 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         public init(
             accessToken: String,
             accountID: String,
-            modelID: String = "codex-mini-latest",
+            modelID: String = "gpt-5.4",
             host: String = "chatgpt.com",
             port: Int? = nil,
             scheme: String = "https",

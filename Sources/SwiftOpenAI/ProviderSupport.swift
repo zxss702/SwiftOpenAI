@@ -37,8 +37,6 @@ enum ProviderFamily: String, Sendable {
 
     var assistantReasoningEncoding: AssistantReasoningEncoding {
         switch self {
-        // case .moonshot: // 这个是一般openAI兼容的。
-        //     return .omit
         case .minimax:
             return .reasoningDetails
         case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot:
@@ -107,6 +105,7 @@ struct CanonicalChatRequest: Sendable {
     let user: String?
     let stream: Bool?
     let think: Bool?
+    let reasoningEffort: OpenAIReasoningEffort?
     let mergedExtraBody: [String: AnyCodableValue]
 }
 
@@ -230,6 +229,7 @@ enum ProviderRequestEncoder {
             user: query.user,
             stream: query.stream,
             think: query.think,
+            reasoningEffort: query.reasoningEffort,
             mergedExtraBody: mergeExtraBody(configuration.extraBody, query.extraBody)
         )
 
@@ -330,7 +330,12 @@ enum ProviderRequestEncoder {
             body[key] = value.anyValue
         }
         applyProviderDefaults(into: &body, request: request, family: family)
-        applyThinking(into: &body, think: request.think, family: family)
+        applyThinking(
+            into: &body,
+            think: request.think,
+            reasoningEffort: request.reasoningEffort,
+            family: family
+        )
 
         return body
     }
@@ -486,19 +491,30 @@ enum ProviderRequestEncoder {
         }
     }
 
-    private static func applyThinking(into body: inout [String: Any], think: Bool?, family: ProviderFamily) {
+    private static func applyThinking(
+        into body: inout [String: Any],
+        think: Bool?,
+        reasoningEffort: OpenAIReasoningEffort?,
+        family: ProviderFamily
+    ) {
+        let resolvedEffort = reasoningEffort ?? OpenAIReasoningEffort.fromLegacyThink(think)
         switch family {
         case .minimax:
             body["reasoning_split"] = true
         case .zhipuGLM, .volcengineArk:
-            guard let think else { return }
+            guard let resolvedEffort else { return }
             body["thinking"] = [
-                "type": think ? "enabled" : "disabled"
+                "type": resolvedEffort.enablesReasoning ? "enabled" : "disabled"
             ]
         case .dashscope:
-            guard let think else { return }
-            body["enable_thinking"] = think
-        case .openai, .moonshot, .genericOpenAICompatible:
+            guard let resolvedEffort else { return }
+            body["enable_thinking"] = resolvedEffort.enablesReasoning
+        case .openai:
+            guard let resolvedEffort else { return }
+            body["reasoning"] = [
+                "effort": resolvedEffort.rawValue
+            ]
+        case .moonshot, .genericOpenAICompatible:
             break
         }
     }

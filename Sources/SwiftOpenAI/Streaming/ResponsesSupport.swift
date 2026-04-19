@@ -12,6 +12,7 @@ import NIOHTTP1
 
 private let codexResponsesRequestTimeout: TimeAmount = .seconds(300)
 private let codexResponsesBodyLimit = 64 * 1024 * 1024
+private let defaultCodexResponsesInstructions = "You are a helpful assistant."
 
 struct CodexResponsesStreamState {
     var pendingText: String = ""
@@ -41,6 +42,7 @@ nonisolated func sendCodexResponsesMessage(
     topP: Double? = nil,
     user: String? = nil,
     think: Bool? = nil,
+    reasoningEffort: OpenAIReasoningEffort? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -69,6 +71,7 @@ nonisolated func sendCodexResponsesMessage(
         tools: tools,
         topP: topP,
         think: think,
+        reasoningEffort: reasoningEffort,
         extraBody: extraBody,
         extraHeaders: extraHeaders
     )
@@ -147,6 +150,7 @@ nonisolated func makeCodexResponsesRequest(
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
     think: Bool?,
+    reasoningEffort: OpenAIReasoningEffort?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?
 ) throws -> HTTPClientRequest {
@@ -169,6 +173,7 @@ nonisolated func makeCodexResponsesRequest(
         tools: tools,
         topP: topP,
         think: think,
+        reasoningEffort: reasoningEffort,
         extraBody: extraBody
     )
 
@@ -204,11 +209,14 @@ nonisolated func makeCodexResponsesRequestBody(
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
     think: Bool?,
+    reasoningEffort: OpenAIReasoningEffort?,
     extraBody: [String: AnyCodableValue]?
 ) throws -> [String: Any] {
+    let preparedPrompt = try prepareCodexResponsesPrompt(messages)
     var body: [String: Any] = [
         "model": modelInfo.modelID,
-        "input": try encodeResponsesInputItems(messages),
+        "instructions": preparedPrompt.instructions,
+        "input": preparedPrompt.input,
         "stream": true,
         "store": false,
         "parallel_tool_calls": parallelToolCalls ?? !(tools?.isEmpty ?? true)
@@ -241,20 +249,43 @@ nonisolated func makeCodexResponsesRequestBody(
     if let textControls = try encodeResponsesTextControls(responseFormat) {
         body["text"] = textControls
     }
-    if let reasoning = encodeResponsesReasoning(think) {
+    if let reasoning = encodeResponsesReasoning(
+        think: think,
+        reasoningEffort: reasoningEffort
+    ) {
         body["reasoning"] = reasoning
     }
 
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
     }
-
-    body["model"] = modelInfo.modelID
-    body["input"] = try encodeResponsesInputItems(messages)
-    body["stream"] = true
-    body["store"] = false
-
     return body
+}
+
+private nonisolated func prepareCodexResponsesPrompt(
+    _ messages: [ChatQuery.ChatCompletionMessageParam]
+) throws -> (instructions: String, input: [[String: Any]]) {
+    var instructionsParts: [String] = []
+    var inputMessages: [ChatQuery.ChatCompletionMessageParam] = []
+
+    for message in messages {
+        switch message {
+        case .system(let systemMessage):
+            guard case .textContent(let text) = systemMessage.content else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                instructionsParts.append(trimmed)
+            }
+        default:
+            inputMessages.append(message)
+        }
+    }
+
+    let instructions = instructionsParts.isEmpty
+        ? defaultCodexResponsesInstructions
+        : instructionsParts.joined(separator: "\n\n")
+
+    return (instructions, try encodeResponsesInputItems(inputMessages))
 }
 
 nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
@@ -413,10 +444,15 @@ private nonisolated func encodeResponsesToolChoice(
     }
 }
 
-private nonisolated func encodeResponsesReasoning(_ think: Bool?) -> [String: Any]? {
-    guard let think else { return nil }
+private nonisolated func encodeResponsesReasoning(
+    think: Bool?,
+    reasoningEffort: OpenAIReasoningEffort?
+) -> [String: Any]? {
+    guard let resolvedEffort = reasoningEffort ?? OpenAIReasoningEffort.fromLegacyThink(think) else {
+        return nil
+    }
     return [
-        "effort": think ? "medium" : "minimal"
+        "effort": resolvedEffort.rawValue
     ]
 }
 

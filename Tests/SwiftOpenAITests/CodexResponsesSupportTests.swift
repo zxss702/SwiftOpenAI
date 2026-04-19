@@ -8,7 +8,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             .init(
                 accessToken: "access-token",
                 accountID: "account-id",
-                modelID: "codex-mini-latest",
+                modelID: "gpt-5.4",
                 isFedRAMPAccount: true
             )
         )
@@ -16,7 +16,7 @@ final class CodexResponsesSupportTests: XCTestCase {
         XCTAssertTrue(info.isCodex)
         XCTAssertEqual(info.wireAPI, .codexResponses)
         XCTAssertEqual(info.token, "access-token")
-        XCTAssertEqual(info.modelID, "codex-mini-latest")
+        XCTAssertEqual(info.modelID, "gpt-5.4")
         XCTAssertEqual(info.host, "chatgpt.com")
         XCTAssertEqual(info.resolvedBasePath, "/backend-api/codex")
         XCTAssertEqual(info.baseURL?.absoluteString, "https://chatgpt.com/backend-api/codex")
@@ -47,7 +47,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             modelInfo: .init(
                 accessToken: "access-token",
                 accountID: "account-id",
-                modelID: "codex-mini-latest"
+                modelID: "gpt-5.4"
             ),
             messages: [
                 .system("system prompt"),
@@ -88,6 +88,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             tools: [tool],
             topP: 0.9,
             think: true,
+            reasoningEffort: .high,
             extraBody: [
                 "metadata": .object([
                     "source": .string("unit-test")
@@ -95,7 +96,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(body["model"] as? String, "codex-mini-latest")
+        XCTAssertEqual(body["model"] as? String, "gpt-5.4")
         XCTAssertEqual(body["stream"] as? Bool, true)
         XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
@@ -106,9 +107,10 @@ final class CodexResponsesSupportTests: XCTestCase {
         XCTAssertEqual(body["top_p"] as? Double, 0.9)
         XCTAssertEqual(body["stop"] as? [String], ["END"])
         XCTAssertEqual(body["tool_choice"] as? String, "required")
+        XCTAssertEqual(body["instructions"] as? String, "system prompt")
 
         let reasoning = try XCTUnwrap(body["reasoning"] as? [String: Any])
-        XCTAssertEqual(reasoning["effort"] as? String, "medium")
+        XCTAssertEqual(reasoning["effort"] as? String, "high")
 
         let metadata = try XCTUnwrap(body["metadata"] as? [String: Any])
         XCTAssertEqual(metadata["source"] as? String, "unit-test")
@@ -124,28 +126,25 @@ final class CodexResponsesSupportTests: XCTestCase {
         XCTAssertEqual(tools.first?["name"] as? String, "lookup_weather")
 
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
-        XCTAssertEqual(input.count, 5)
+        XCTAssertEqual(input.count, 4)
 
-        XCTAssertEqual(input[0]["type"] as? String, "message")
-        XCTAssertEqual(input[0]["role"] as? String, "system")
-
-        let userContent = try XCTUnwrap(input[1]["content"] as? [[String: Any]])
+        let userContent = try XCTUnwrap(input[0]["content"] as? [[String: Any]])
         XCTAssertEqual(userContent.first?["type"] as? String, "input_image")
         XCTAssertEqual(userContent.first?["detail"] as? String, "high")
         XCTAssertEqual(userContent.last?["type"] as? String, "input_text")
         XCTAssertEqual(userContent.last?["text"] as? String, "show me")
 
-        XCTAssertEqual(input[2]["type"] as? String, "message")
-        XCTAssertEqual(input[2]["role"] as? String, "assistant")
+        XCTAssertEqual(input[1]["type"] as? String, "message")
+        XCTAssertEqual(input[1]["role"] as? String, "assistant")
 
-        XCTAssertEqual(input[3]["type"] as? String, "function_call")
+        XCTAssertEqual(input[2]["type"] as? String, "function_call")
+        XCTAssertEqual(input[2]["call_id"] as? String, "call_123")
+        XCTAssertEqual(input[2]["name"] as? String, "lookup_weather")
+        XCTAssertEqual(input[2]["arguments"] as? String, #"{"city":"Shanghai"}"#)
+
+        XCTAssertEqual(input[3]["type"] as? String, "function_call_output")
         XCTAssertEqual(input[3]["call_id"] as? String, "call_123")
-        XCTAssertEqual(input[3]["name"] as? String, "lookup_weather")
-        XCTAssertEqual(input[3]["arguments"] as? String, #"{"city":"Shanghai"}"#)
-
-        XCTAssertEqual(input[4]["type"] as? String, "function_call_output")
-        XCTAssertEqual(input[4]["call_id"] as? String, "call_123")
-        let output = try XCTUnwrap(input[4]["output"] as? [[String: Any]])
+        let output = try XCTUnwrap(input[3]["output"] as? [[String: Any]])
         XCTAssertEqual(output.first?["type"] as? String, "input_image")
         XCTAssertEqual(output.first?["detail"] as? String, "low")
         XCTAssertEqual(output.last?["type"] as? String, "input_text")

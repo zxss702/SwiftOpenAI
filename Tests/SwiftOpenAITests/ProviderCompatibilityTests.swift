@@ -186,7 +186,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertNil(body["max_tokens"])
     }
 
-    func testMoonshotOmitsAssistantReasoningHistory() async throws {
+    func testMoonshotUsesStandardReasoningContentEncoding() async throws {
         let query = ChatQuery(
             messages: [
                 .assistant("previous", reasoningContent: "should-not-be-sent"),
@@ -207,7 +207,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         let body = try requestBody(from: prepared.urlRequest)
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let assistantMessage = try XCTUnwrap(messages.first)
-        XCTAssertNil(assistantMessage["reasoning_content"])
+        XCTAssertEqual(assistantMessage["reasoning_content"] as? String, "should-not-be-sent")
         XCTAssertNil(assistantMessage["reasoning_details"])
     }
 

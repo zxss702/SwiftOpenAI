@@ -7,7 +7,7 @@ import Foundation
 /// ## Topics
 ///
 /// ### 初始化
-/// - ``init(messages:model:frequencyPenalty:maxCompletionTokens:n:parallelToolCalls:prediction:presencePenalty:responseFormat:stop:temperature:toolChoice:tools:topP:user:stream:think:extraBody:)``
+/// - ``init(messages:model:frequencyPenalty:maxCompletionTokens:n:parallelToolCalls:prediction:presencePenalty:responseFormat:stop:temperature:toolChoice:tools:topP:user:stream:think:reasoningEffort:extraBody:)``
 ///
 /// ### 消息相关
 /// - ``messages``
@@ -45,6 +45,7 @@ public struct ChatQuery: Codable, Sendable {
     public let user: String?
     public let stream: Bool?
     public let think: Bool?
+    public let reasoningEffort: OpenAIReasoningEffort?
     public let extraBody: [String: AnyCodableValue]?
     
     public init(
@@ -65,6 +66,7 @@ public struct ChatQuery: Codable, Sendable {
         user: String? = nil,
         stream: Bool? = nil,
         think: Bool? = nil,
+        reasoningEffort: OpenAIReasoningEffort? = nil,
         extraBody: [String: AnyCodableValue]? = nil
     ) {
         self.messages = messages
@@ -84,6 +86,7 @@ public struct ChatQuery: Codable, Sendable {
         self.user = user
         self.stream = stream
         self.think = think
+        self.reasoningEffort = reasoningEffort
         self.extraBody = extraBody
     }
     
