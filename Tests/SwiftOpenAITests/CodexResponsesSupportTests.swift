@@ -136,6 +136,9 @@ final class CodexResponsesSupportTests: XCTestCase {
 
         XCTAssertEqual(input[1]["type"] as? String, "message")
         XCTAssertEqual(input[1]["role"] as? String, "assistant")
+        let assistantContent = try XCTUnwrap(input[1]["content"] as? [[String: Any]])
+        XCTAssertEqual(assistantContent.first?["type"] as? String, "output_text")
+        XCTAssertEqual(assistantContent.first?["text"] as? String, "calling tool")
 
         XCTAssertEqual(input[2]["type"] as? String, "function_call")
         XCTAssertEqual(input[2]["call_id"] as? String, "call_123")
@@ -149,6 +152,43 @@ final class CodexResponsesSupportTests: XCTestCase {
         XCTAssertEqual(output.first?["detail"] as? String, "low")
         XCTAssertEqual(output.last?["type"] as? String, "input_text")
         XCTAssertEqual(output.last?["text"] as? String, "tool result")
+    }
+
+    func testCodexResponsesAssistantReasoningHistoryIsOmittedFromInput() throws {
+        let body = try makeCodexResponsesRequestBody(
+            modelInfo: .init(
+                accessToken: "access-token",
+                accountID: "account-id",
+                modelID: "gpt-5.4"
+            ),
+            messages: [
+                .system("system prompt"),
+                .user("你好"),
+                .assistant(
+                    "",
+                    reasoningContent: "internal reasoning that should not be replayed"
+                ),
+                .user("你是谁？")
+            ],
+            frequencyPenalty: nil,
+            maxCompletionTokens: nil,
+            parallelToolCalls: nil,
+            presencePenalty: nil,
+            responseFormat: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: nil,
+            topP: nil,
+            think: nil,
+            reasoningEffort: .medium,
+            extraBody: nil
+        )
+
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 2)
+        XCTAssertEqual(input[0]["role"] as? String, "user")
+        XCTAssertEqual(input[1]["role"] as? String, "user")
     }
 
     func testCodexSSEProcessingAccumulatesTextReasoningToolCallsAndUsage() async throws {

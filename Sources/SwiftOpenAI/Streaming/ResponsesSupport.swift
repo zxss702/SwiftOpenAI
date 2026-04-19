@@ -330,19 +330,11 @@ nonisolated func encodeResponsesInputItems(
                 items.append([
                     "type": "message",
                     "role": "assistant",
-                    "content": [["type": "input_text", "text": content]]
+                    "content": [["type": "output_text", "text": content]]
                 ])
             }
-            if items.isEmpty,
-               let reasoningContent = assistantMessage.reasoningContent,
-               !reasoningContent.isEmpty,
-               (assistantMessage.toolCalls?.isEmpty ?? true) {
-                items.append([
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [["type": "input_text", "text": reasoningContent]]
-                ])
-            }
+            // Previous assistant reasoning is not valid as a message input item for
+            // Codex responses. We only replay visible assistant output plus tool calls.
             for toolCall in assistantMessage.toolCalls ?? [] {
                 items.append([
                     "type": "function_call",
