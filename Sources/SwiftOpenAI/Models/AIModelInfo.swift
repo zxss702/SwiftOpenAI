@@ -18,11 +18,6 @@ public enum OpenAIReasoningEffort: String, Codable, Sendable, Hashable, CaseIter
     public var enablesReasoning: Bool {
         self != .none
     }
-
-    public static func fromLegacyThink(_ think: Bool?) -> Self? {
-        guard let think else { return nil }
-        return think ? .medium : OpenAIReasoningEffort.none
-    }
 }
 
 /// AI 模型配置信息

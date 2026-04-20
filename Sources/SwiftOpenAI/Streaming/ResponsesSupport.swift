@@ -440,11 +440,12 @@ private nonisolated func encodeResponsesReasoning(
     think: Bool?,
     reasoningEffort: OpenAIReasoningEffort?
 ) -> [String: Any]? {
-    guard let resolvedEffort = reasoningEffort ?? OpenAIReasoningEffort.fromLegacyThink(think) else {
+    guard let reasoningEffort else {
         return nil
     }
     return [
-        "effort": resolvedEffort.rawValue
+        "effort": reasoningEffort.rawValue,
+        "summary": "auto"
     ]
 }
 

@@ -76,8 +76,8 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(reasoningDetails.first?["text"] as? String, "think-first")
     }
 
-    func testMiniMaxAlwaysForcesReasoningSplitTrue() async throws {
-        for think in [Optional(true), Optional(false), Optional<Bool>.none] {
+    func testMiniMaxReasoningSplitFollowsThink() async throws {
+        for (think, expected) in [(Optional(true), Optional(true)), (Optional(false), Optional(false)), (Optional<Bool>.none, Optional<Bool>.none)] {
             let prepared = try await createChatRequest(
                 query: ChatQuery(
                     messages: [.user("hello")],
@@ -92,11 +92,11 @@ final class ProviderCompatibilityTests: XCTestCase {
             )
 
             let body = try requestBody(from: prepared.urlRequest)
-            XCTAssertEqual(body["reasoning_split"] as? Bool, true)
+            XCTAssertEqual(body["reasoning_split"] as? Bool, expected)
         }
     }
 
-    func testMiniMaxReasoningSplitOverridesUserExtraBody() async throws {
+    func testMiniMaxReasoningSplitUsesThinkInsteadOfForcingTrue() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(
                 messages: [.user("hello")],
@@ -117,7 +117,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         )
 
         let body = try requestBody(from: prepared.urlRequest)
-        XCTAssertEqual(body["reasoning_split"] as? Bool, true)
+        XCTAssertEqual(body["reasoning_split"] as? Bool, false)
         let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
         XCTAssertEqual(extraBody["custom_flag"] as? String, "keep-me")
     }

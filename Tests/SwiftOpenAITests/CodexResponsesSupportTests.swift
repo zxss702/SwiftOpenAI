@@ -87,7 +87,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             toolChoice: .required,
             tools: [tool],
             topP: 0.9,
-            think: true,
+            think: nil,
             reasoningEffort: .high,
             extraBody: [
                 "metadata": .object([
@@ -111,6 +111,7 @@ final class CodexResponsesSupportTests: XCTestCase {
 
         let reasoning = try XCTUnwrap(body["reasoning"] as? [String: Any])
         XCTAssertEqual(reasoning["effort"] as? String, "high")
+        XCTAssertEqual(reasoning["summary"] as? String, "auto")
 
         let metadata = try XCTUnwrap(body["metadata"] as? [String: Any])
         XCTAssertEqual(metadata["source"] as? String, "unit-test")

@@ -497,22 +497,21 @@ enum ProviderRequestEncoder {
         reasoningEffort: OpenAIReasoningEffort?,
         family: ProviderFamily
     ) {
-        let resolvedEffort = reasoningEffort ?? OpenAIReasoningEffort.fromLegacyThink(think)
         switch family {
         case .minimax:
             body["reasoning_split"] = true
         case .zhipuGLM, .volcengineArk:
-            guard let resolvedEffort else { return }
+            guard let think else { return }
             body["thinking"] = [
-                "type": resolvedEffort.enablesReasoning ? "enabled" : "disabled"
+                "type": think ? "enabled" : "disabled"
             ]
         case .dashscope:
-            guard let resolvedEffort else { return }
-            body["enable_thinking"] = resolvedEffort.enablesReasoning
+            guard let think else { return }
+            body["enable_thinking"] = think
         case .openai:
-            guard let resolvedEffort else { return }
+            guard let think else { return }
             body["reasoning"] = [
-                "effort": resolvedEffort.rawValue
+                "effort": think ? OpenAIReasoningEffort.medium.rawValue : OpenAIReasoningEffort.none.rawValue
             ]
         case .moonshot, .genericOpenAICompatible:
             break
