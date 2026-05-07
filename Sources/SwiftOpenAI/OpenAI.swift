@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -469,10 +469,8 @@ nonisolated private func processSSELine(
 ) throws -> Bool {
     guard !line.isEmpty, !line.hasPrefix(":") else { return false }
 
-    var dataString = line
-    if dataString.hasPrefix("data:") {
-        dataString.removeFirst(5)
-    }
+    guard line.hasPrefix("data:") else { return false }
+    var dataString = String(line.dropFirst(5))
     dataString = dataString.trimmingCharacters(in: .whitespaces)
 
     if dataString == "[DONE]" {
