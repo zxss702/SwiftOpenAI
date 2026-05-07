@@ -573,9 +573,9 @@ private nonisolated func processCodexResponsesSSELine(
     }
 
     guard let data = dataString.data(using: .utf8),
-          let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let type = json["type"] as? String else {
-        throw OpenAIError.invalidResponse(dataString, code: 200)
+        return
     }
 
     switch type {

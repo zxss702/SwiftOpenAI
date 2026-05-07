@@ -203,29 +203,12 @@ nonisolated func createChatStreamEnvelopeStream(
         let task = Task { [configuration] in
             do {
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-                print("[SwiftOpenAI-DEBUG] ===== 流式请求开始 =====")
-                print("[SwiftOpenAI-DEBUG] 请求 URL: \(preparedRequest.urlRequest.url?.absoluteString ?? "nil")")
-                print("[SwiftOpenAI-DEBUG] 请求方法: \(preparedRequest.urlRequest.httpMethod ?? "nil")")
-                print("[SwiftOpenAI-DEBUG] 请求头: \(preparedRequest.urlRequest.allHTTPHeaderFields ?? [:])")
-                if let body = preparedRequest.urlRequest.httpBody,
-                   let bodyString = String(data: body, encoding: .utf8) {
-                    print("[SwiftOpenAI-DEBUG] 请求体: \(bodyString.prefix(500))")
-                }
-                print("[SwiftOpenAI-DEBUG] Provider Family: \(preparedRequest.family)")
-
                 var streamState = ProviderStreamNormalizationState()
                 let response = try await executePreparedRequest(preparedRequest)
-
-                print("[SwiftOpenAI-DEBUG] 响应状态码: \(response.status.code)")
-                print("[SwiftOpenAI-DEBUG] 响应头:")
-                for header in response.headers {
-                    print("[SwiftOpenAI-DEBUG]   \(header.name): \(header.value)")
-                }
 
                 guard (200...299).contains(Int(response.status.code)) else {
                     let responseBody = try await responseBodyString(from: response.body)
                     let statusCode = Int(response.status.code)
-                    print("[SwiftOpenAI-DEBUG] ❌ HTTP 错误 \(statusCode): \(responseBody.prefix(1000))")
                     throw OpenAIError.invalidResponse(responseBody, code: statusCode)
                 }
 
@@ -235,17 +218,9 @@ nonisolated func createChatStreamEnvelopeStream(
                 let statusCode = Int(response.status.code)
 
                 var pendingText = ""
-                var chunkIndex = 0
                 for try await part in response.body {
                     try Task.checkCancellation()
                     let text = String(buffer: part)
-                    print("[SwiftOpenAI-DEBUG] 收到原始 chunk[\(chunkIndex)] (\(text.count) 字符):")
-                    for rawLine in text.components(separatedBy: "\n") {
-                        if !rawLine.isEmpty {
-                            print("[SwiftOpenAI-DEBUG]   | \(rawLine)")
-                        }
-                    }
-                    chunkIndex += 1
                     if try processSSEText(
                         text,
                         pendingText: &pendingText,
@@ -255,7 +230,6 @@ nonisolated func createChatStreamEnvelopeStream(
                         state: &streamState,
                         continuation: continuation
                     ) {
-                        print("[SwiftOpenAI-DEBUG] ✅ 流正常结束 (收到 [DONE])")
                         return
                     }
                 }
@@ -270,15 +244,11 @@ nonisolated func createChatStreamEnvelopeStream(
                     continuation: continuation,
                     finalize: true
                 ) {
-                    print("[SwiftOpenAI-DEBUG] ✅ 流正常结束 (finalize)")
                     return
                 }
 
-                print("[SwiftOpenAI-DEBUG] ✅ 流正常结束 (body 耗尽)")
                 continuation.finish()
             } catch {
-                print("[SwiftOpenAI-DEBUG] ❌ 流式请求出错: \(error)")
-                print("[SwiftOpenAI-DEBUG] 错误类型: \(type(of: error))")
                 continuation.finish(throwing: error)
             }
         }
@@ -519,7 +489,7 @@ nonisolated private func processSSELine(
         continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
         return false
     } catch {
-        throw OpenAIError.invalidResponse(dataString, code: statusCode)
+        return false
     }
 }
 
