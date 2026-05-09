@@ -374,6 +374,8 @@ private nonisolated func sendCompletionsMessageSync(
             completionTokens: $0.completionTokens,
             totalTokens: $0.totalTokens,
             cachedTokens: $0.cachedTokens,
+            promptCacheHitTokens: $0.promptCacheHitTokens,
+            promptCacheMissTokens: $0.promptCacheMissTokens,
             reasoningTokens: $0.reasoningTokens
         )
     }

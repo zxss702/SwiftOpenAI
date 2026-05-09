@@ -108,20 +108,41 @@ public struct ChatStreamResult: Codable, Sendable {
             /// 缓存的 Token 数
             public let cachedTokens: Int?
 
+            /// DeepSeek 返回的提示词缓存命中 Token 数
+            public let promptCacheHitTokens: Int?
+
+            /// DeepSeek 返回的提示词缓存未命中 Token 数
+            public let promptCacheMissTokens: Int?
+
             /// 推理过程中使用的 Token 数
             public let reasoningTokens: Int?
+
+            public var promptCacheHitRate: Double? {
+                guard
+                    let promptCacheHitTokens,
+                    let promptCacheMissTokens,
+                    promptCacheHitTokens + promptCacheMissTokens > 0
+                else {
+                    return nil
+                }
+                return Double(promptCacheHitTokens) / Double(promptCacheHitTokens + promptCacheMissTokens)
+            }
             
             public init(
                 promptTokens: Int? = nil,
                 completionTokens: Int? = nil,
                 totalTokens: Int? = nil,
                 cachedTokens: Int? = nil,
+                promptCacheHitTokens: Int? = nil,
+                promptCacheMissTokens: Int? = nil,
                 reasoningTokens: Int? = nil
             ) {
                 self.promptTokens = promptTokens
                 self.completionTokens = completionTokens
                 self.totalTokens = totalTokens
                 self.cachedTokens = cachedTokens
+                self.promptCacheHitTokens = promptCacheHitTokens
+                self.promptCacheMissTokens = promptCacheMissTokens
                 self.reasoningTokens = reasoningTokens
             }
             
@@ -130,6 +151,8 @@ public struct ChatStreamResult: Codable, Sendable {
                 case completionTokens = "completion_tokens"
                 case totalTokens = "total_tokens"
                 case cachedTokens = "cached_tokens"
+                case promptCacheHitTokens = "prompt_cache_hit_tokens"
+                case promptCacheMissTokens = "prompt_cache_miss_tokens"
                 case reasoningTokens = "reasoning_tokens"
                 case promptTokensDetails = "prompt_tokens_details"
                 case completionTokensDetails = "completion_tokens_details"
@@ -156,12 +179,14 @@ public struct ChatStreamResult: Codable, Sendable {
                 promptTokens = try container.decodeIfPresent(Int.self, forKey: .promptTokens)
                 completionTokens = try container.decodeIfPresent(Int.self, forKey: .completionTokens)
                 totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens)
+                promptCacheHitTokens = try container.decodeIfPresent(Int.self, forKey: .promptCacheHitTokens)
+                promptCacheMissTokens = try container.decodeIfPresent(Int.self, forKey: .promptCacheMissTokens)
 
                 if let cachedTokens = try container.decodeIfPresent(Int.self, forKey: .cachedTokens) {
                     self.cachedTokens = cachedTokens
                 } else {
                     let promptDetails = try container.decodeIfPresent(PromptTokensDetails.self, forKey: .promptTokensDetails)
-                    self.cachedTokens = promptDetails?.cachedTokens
+                    self.cachedTokens = promptDetails?.cachedTokens ?? promptCacheHitTokens
                 }
 
                 if let reasoningTokens = try container.decodeIfPresent(Int.self, forKey: .reasoningTokens) {
@@ -178,6 +203,8 @@ public struct ChatStreamResult: Codable, Sendable {
                 try container.encodeIfPresent(completionTokens, forKey: .completionTokens)
                 try container.encodeIfPresent(totalTokens, forKey: .totalTokens)
                 try container.encodeIfPresent(cachedTokens, forKey: .cachedTokens)
+                try container.encodeIfPresent(promptCacheHitTokens, forKey: .promptCacheHitTokens)
+                try container.encodeIfPresent(promptCacheMissTokens, forKey: .promptCacheMissTokens)
                 try container.encodeIfPresent(reasoningTokens, forKey: .reasoningTokens)
             }
         }

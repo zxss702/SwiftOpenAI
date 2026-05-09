@@ -258,7 +258,7 @@ enum ProviderRequestEncoder {
         }
 
         let body = try buildRequestBody(from: canonicalRequest, family: family)
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         return PreparedChatRequest(
             urlRequest: request,

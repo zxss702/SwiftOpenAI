@@ -191,7 +191,7 @@ nonisolated func makeCodexResponsesRequest(
         request.headers.replaceOrAdd(name: key, value: value)
     }
 
-    request.body = .bytes(try JSONSerialization.data(withJSONObject: body, options: []))
+    request.body = .bytes(try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]))
     return request
 }
 
@@ -728,11 +728,15 @@ nonisolated func makeUsageInfo(
 ) -> ChatStreamResult.Choice.UsageInfo {
     let promptDetails = usage["input_tokens_details"] as? [String: Any]
     let completionDetails = usage["output_tokens_details"] as? [String: Any]
+    let promptCacheHitTokens = usage["prompt_cache_hit_tokens"] as? Int
+    let promptCacheMissTokens = usage["prompt_cache_miss_tokens"] as? Int
     return ChatStreamResult.Choice.UsageInfo(
         promptTokens: usage["input_tokens"] as? Int,
         completionTokens: usage["output_tokens"] as? Int,
         totalTokens: usage["total_tokens"] as? Int,
-        cachedTokens: (usage["cached_tokens"] as? Int) ?? (promptDetails?["cached_tokens"] as? Int),
+        cachedTokens: (usage["cached_tokens"] as? Int) ?? (promptDetails?["cached_tokens"] as? Int) ?? promptCacheHitTokens,
+        promptCacheHitTokens: promptCacheHitTokens,
+        promptCacheMissTokens: promptCacheMissTokens,
         reasoningTokens: (usage["reasoning_tokens"] as? Int) ?? (completionDetails?["reasoning_tokens"] as? Int)
     )
 }

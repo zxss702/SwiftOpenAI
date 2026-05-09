@@ -734,14 +734,33 @@ public struct ChatCompletionResult: Codable, Sendable {
         /// 缓存的 Token 数
         public let cachedTokens: Int?
 
+        /// DeepSeek 返回的提示词缓存命中 Token 数
+        public let promptCacheHitTokens: Int?
+
+        /// DeepSeek 返回的提示词缓存未命中 Token 数
+        public let promptCacheMissTokens: Int?
+
         /// 推理过程中使用的 Token 数
         public let reasoningTokens: Int?
+
+        public var promptCacheHitRate: Double? {
+            guard
+                let promptCacheHitTokens,
+                let promptCacheMissTokens,
+                promptCacheHitTokens + promptCacheMissTokens > 0
+            else {
+                return nil
+            }
+            return Double(promptCacheHitTokens) / Double(promptCacheHitTokens + promptCacheMissTokens)
+        }
         
         private enum CodingKeys: String, CodingKey {
             case promptTokens = "prompt_tokens"
             case completionTokens = "completion_tokens"
             case totalTokens = "total_tokens"
             case cachedTokens = "cached_tokens"
+            case promptCacheHitTokens = "prompt_cache_hit_tokens"
+            case promptCacheMissTokens = "prompt_cache_miss_tokens"
             case reasoningTokens = "reasoning_tokens"
             case promptTokensDetails = "prompt_tokens_details"
             case completionTokensDetails = "completion_tokens_details"
@@ -768,12 +787,14 @@ public struct ChatCompletionResult: Codable, Sendable {
             promptTokens = try container.decodeIfPresent(Int.self, forKey: .promptTokens) ?? 0
             completionTokens = try container.decodeIfPresent(Int.self, forKey: .completionTokens) ?? 0
             totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
+            promptCacheHitTokens = try container.decodeIfPresent(Int.self, forKey: .promptCacheHitTokens)
+            promptCacheMissTokens = try container.decodeIfPresent(Int.self, forKey: .promptCacheMissTokens)
 
             if let cachedTokens = try container.decodeIfPresent(Int.self, forKey: .cachedTokens) {
                 self.cachedTokens = cachedTokens
             } else {
                 let promptDetails = try container.decodeIfPresent(PromptTokensDetails.self, forKey: .promptTokensDetails)
-                self.cachedTokens = promptDetails?.cachedTokens
+                self.cachedTokens = promptDetails?.cachedTokens ?? promptCacheHitTokens
             }
 
             if let reasoningTokens = try container.decodeIfPresent(Int.self, forKey: .reasoningTokens) {
@@ -790,6 +811,8 @@ public struct ChatCompletionResult: Codable, Sendable {
             try container.encode(completionTokens, forKey: .completionTokens)
             try container.encode(totalTokens, forKey: .totalTokens)
             try container.encodeIfPresent(cachedTokens, forKey: .cachedTokens)
+            try container.encodeIfPresent(promptCacheHitTokens, forKey: .promptCacheHitTokens)
+            try container.encodeIfPresent(promptCacheMissTokens, forKey: .promptCacheMissTokens)
             try container.encodeIfPresent(reasoningTokens, forKey: .reasoningTokens)
         }
     }

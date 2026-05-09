@@ -262,7 +262,7 @@ nonisolated func makeCodexResponsesRequest(
     var request = URLRequest(url: url)
     request.timeoutInterval = 300
     request.httpMethod = "POST"
-    request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+    request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
     request.setValue(OpenAIConfiguration.defaultUserAgent, forHTTPHeaderField: "User-Agent")
@@ -784,11 +784,15 @@ nonisolated func makeUsageInfo(
 ) -> ChatStreamResult.Choice.UsageInfo {
     let promptDetails = usage["input_tokens_details"] as? [String: Any]
     let completionDetails = usage["output_tokens_details"] as? [String: Any]
+    let promptCacheHitTokens = usage["prompt_cache_hit_tokens"] as? Int
+    let promptCacheMissTokens = usage["prompt_cache_miss_tokens"] as? Int
     return ChatStreamResult.Choice.UsageInfo(
         promptTokens: usage["input_tokens"] as? Int,
         completionTokens: usage["output_tokens"] as? Int,
         totalTokens: usage["total_tokens"] as? Int,
-        cachedTokens: (usage["cached_tokens"] as? Int) ?? (promptDetails?["cached_tokens"] as? Int),
+        cachedTokens: (usage["cached_tokens"] as? Int) ?? (promptDetails?["cached_tokens"] as? Int) ?? promptCacheHitTokens,
+        promptCacheHitTokens: promptCacheHitTokens,
+        promptCacheMissTokens: promptCacheMissTokens,
         reasoningTokens: (usage["reasoning_tokens"] as? Int) ?? (completionDetails?["reasoning_tokens"] as? Int)
     )
 }
