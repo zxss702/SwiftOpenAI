@@ -571,15 +571,17 @@ enum ProviderRequestEncoder {
         request: CanonicalChatRequest,
         family: ProviderFamily
     ) {
+        guard request.stream == true else { return }
+
+        var streamOptions = body["stream_options"] as? [String: Any] ?? [:]
+        if streamOptions["include_usage"] == nil {
+            streamOptions["include_usage"] = true
+        }
+        body["stream_options"] = streamOptions
+
         switch family {
         case .minimax:
-            guard request.stream == true else { return }
-
-            var streamOptions = body["stream_options"] as? [String: Any] ?? [:]
-            if streamOptions["include_usage"] == nil {
-                streamOptions["include_usage"] = true
-            }
-            body["stream_options"] = streamOptions
+            break
         case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
             break
         }

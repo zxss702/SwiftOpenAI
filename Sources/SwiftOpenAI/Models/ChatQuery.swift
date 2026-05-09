@@ -467,10 +467,15 @@ public enum AnyCodableValue: Codable, Sendable, Hashable, Equatable {
             self = .null
         } else if let bool = try? container.decode(Bool.self) {
             self = .bool(bool)
+        } else if let double = try? container.decode(Double.self) {
+            // 若值为整数（如 42.0），归一化为 .int 以避免后续序列化精度问题
+            if Double(Int(double)) == double {
+                self = .int(Int(double))
+            } else {
+                self = .double(double)
+            }
         } else if let int = try? container.decode(Int.self) {
             self = .int(int)
-        } else if let double = try? container.decode(Double.self) {
-            self = .double(double)
         } else if let string = try? container.decode(String.self) {
             self = .string(string)
         } else if let array = try? container.decode([AnyCodableValue].self) {

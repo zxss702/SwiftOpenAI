@@ -300,7 +300,6 @@ nonisolated func makeCodexResponsesRequestBody(
         "instructions": preparedPrompt.instructions,
         "input": preparedPrompt.input,
         "stream": true,
-        "store": false,
         "parallel_tool_calls": parallelToolCalls ?? !(tools?.isEmpty ?? true)
     ]
 
