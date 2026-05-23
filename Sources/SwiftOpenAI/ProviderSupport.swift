@@ -15,6 +15,7 @@ enum ProviderFamily: String, Sendable {
     case volcengineArk
     case dashscope
     case genericOpenAICompatible
+    case deepseek
 
     var providerName: String {
         switch self {
@@ -32,6 +33,8 @@ enum ProviderFamily: String, Sendable {
             return "dashscope"
         case .genericOpenAICompatible:
             return "generic-openai-compatible"
+        case .deepseek:
+            return "deepseek"
         }
     }
 
@@ -39,8 +42,18 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .minimax:
             return .reasoningDetails
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot, .deepseek:
             return .reasoningContent
+        }
+    }
+
+    /// 该 Provider 是否支持图像/视频等多模态输入
+    var supportsMultimedia: Bool {
+        switch self {
+        case .minimax, .deepseek:
+            return false
+        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+            return true
         }
     }
 }
@@ -140,6 +153,9 @@ enum ProviderFamilyResolver {
         if normalizedHost.hasSuffix(".volces.com") {
             return .volcengineArk
         }
+        if normalizedHost.contains("deepseek.com") {
+            return .deepseek
+        }
         return .genericOpenAICompatible
     }
 
@@ -159,9 +175,6 @@ enum ProviderCompatibilityValidator {
             if let n = request.n, n != 1 {
                 throw OpenAIError.providerUnsupported("MiniMax 兼容接口只支持 n = 1")
             }
-            if containsImageInput(in: request.messages) {
-                throw OpenAIError.providerUnsupported("MiniMax 兼容接口当前不支持图片或音频输入")
-            }
         case .moonshot:
             let isThinkingModel = request.model.lowercased().contains("thinking")
             if isThinkingModel, let tools = request.tools, !tools.isEmpty {
@@ -170,42 +183,11 @@ enum ProviderCompatibilityValidator {
             if isThinkingModel, let responseFormat = request.responseFormat, responseFormat.type == "json_object" {
                 throw OpenAIError.unsupportedParameterCombination("Moonshot 思考模型暂不支持 JSON Mode")
             }
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
             break
         }
     }
 
-    private static func containsImageInput(in messages: [ChatQuery.ChatCompletionMessageParam]) -> Bool {
-        for message in messages {
-            switch message {
-            case .user(let userMessage):
-                if case .contentParts(let parts) = userMessage.content {
-                    if parts.contains(where: {
-                        if case .image = $0 {
-                            return true
-                        }
-                        return false
-                    }) {
-                        return true
-                    }
-                }
-            case .tool(let toolMessage):
-                if case .contentParts(let parts) = toolMessage.content {
-                    if parts.contains(where: {
-                        if case .image = $0 {
-                            return true
-                        }
-                        return false
-                    }) {
-                        return true
-                    }
-                }
-            case .system, .assistant:
-                continue
-            }
-        }
-        return false
-    }
 }
 
 enum ProviderRequestEncoder {
@@ -285,7 +267,7 @@ enum ProviderRequestEncoder {
             switch family {
             case .openai:
                 body["max_completion_tokens"] = maxCompletionTokens
-            case .moonshot, .minimax, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+            case .moonshot, .minimax, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
                 body["max_tokens"] = maxCompletionTokens
             }
         }
@@ -344,7 +326,36 @@ enum ProviderRequestEncoder {
         _ messages: [ChatQuery.ChatCompletionMessageParam],
         family: ProviderFamily
     ) throws -> [[String: Any]] {
-        try messages.map { try encodeMessage($0, family: family) }
+        let filtered = family.supportsMultimedia
+            ? messages
+            : messages.filter { !messageContainsMultimedia($0) }
+        return try filtered.map { try encodeMessage($0, family: family) }
+    }
+
+    /// 判断消息是否包含图像或视频等多媒体内容
+    private static func messageContainsMultimedia(_ message: ChatQuery.ChatCompletionMessageParam) -> Bool {
+        switch message {
+        case .user(let userMessage):
+            if case .contentParts(let parts) = userMessage.content {
+                return parts.contains(where: {
+                    if case .image = $0 { return true }
+                    if case .video = $0 { return true }
+                    return false
+                })
+            }
+            return false
+        case .tool(let toolMessage):
+            if case .contentParts(let parts) = toolMessage.content {
+                return parts.contains(where: {
+                    if case .image = $0 { return true }
+                    if case .video = $0 { return true }
+                    return false
+                })
+            }
+            return false
+        case .system, .assistant:
+            return false
+        }
     }
 
     private static func encodeMessage(
@@ -425,6 +436,17 @@ enum ProviderRequestEncoder {
                             "detail": imageContent.imageUrl.detail.rawValue
                         ] as [String: Any]
                     ] as [String: Any]
+                case .video(let videoContent):
+                    var videoDict: [String: Any] = [
+                        "url": videoContent.videoUrl.url
+                    ]
+                    if let fps = videoContent.videoUrl.fps {
+                        videoDict["fps"] = fps
+                    }
+                    return [
+                        "type": "video_url",
+                        "video_url": videoDict
+                    ] as [String: Any]
                 }
             }
         }
@@ -449,6 +471,17 @@ enum ProviderRequestEncoder {
                             "url": imageContent.imageUrl.url,
                             "detail": imageContent.imageUrl.detail.rawValue
                         ] as [String: Any]
+                    ] as [String: Any]
+                case .video(let videoContent):
+                    var videoDict: [String: Any] = [
+                        "url": videoContent.videoUrl.url
+                    ]
+                    if let fps = videoContent.videoUrl.fps {
+                        videoDict["fps"] = fps
+                    }
+                    return [
+                        "type": "video_url",
+                        "video_url": videoDict
                     ] as [String: Any]
                 }
             }
@@ -513,7 +546,7 @@ enum ProviderRequestEncoder {
             body["reasoning"] = [
                 "effort": think ? OpenAIReasoningEffort.medium.rawValue : OpenAIReasoningEffort.none.rawValue
             ]
-        case .moonshot, .genericOpenAICompatible:
+        case .moonshot, .genericOpenAICompatible, .deepseek:
             break
         }
     }
@@ -582,7 +615,7 @@ enum ProviderRequestEncoder {
         switch family {
         case .minimax:
             break
-        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
+        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
             break
         }
     }
