@@ -44,3 +44,7 @@ extension ChatQuery.ChatCompletionToolParam {
         )
     }
 }
+
+extension ChatQuery.ChatCompletionToolParam: OpenAIToolConvertible {
+    public var asChatCompletionTool: ChatQuery.ChatCompletionToolParam { self }
+}
