@@ -104,6 +104,91 @@ extension ChatQuery.ChatCompletionMessageParam {
         )
     }
     
+    /// 创建带视频的用户消息
+    public static nonisolated func user(
+        _ text: String,
+        videoDatas: Data...,
+        fps: Double? = nil,
+        name: String? = nil
+    ) -> Self {
+        return .user(
+            UserMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        UserMessageParam.Content.ContentPart.video(
+                            UserMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
+                                )
+                            )
+                        )
+                    } + [
+                        UserMessageParam.Content.ContentPart.text(
+                            UserMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                name: name
+            )
+        )
+    }
+    
+    /// 创建带视频的用户消息
+    public static nonisolated func user(
+        _ text: String,
+        videos: [Data],
+        fps: Double? = nil,
+        name: String? = nil
+    ) -> Self {
+        return .user(
+            UserMessageParam(
+                content: .contentParts(
+                    videos.map { videoData in
+                        UserMessageParam.Content.ContentPart.video(
+                            UserMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
+                                )
+                            )
+                        )
+                    } + [
+                        UserMessageParam.Content.ContentPart.text(
+                            UserMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                name: name
+            )
+        )
+    }
+    
+    /// 创建只有视频的用户消息
+    public static nonisolated func user(
+        videoDatas: Data...,
+        fps: Double? = nil,
+        name: String? = nil
+    ) -> Self {
+        return .user(
+            UserMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        UserMessageParam.Content.ContentPart.video(
+                            UserMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
+                                )
+                            )
+                        )
+                    }
+                ),
+                name: name
+            )
+        )
+    }
+    
     // MARK: - Tool Messages
     
     /// 创建简单文本工具响应消息
@@ -164,6 +249,61 @@ extension ChatQuery.ChatCompletionMessageParam {
                                 imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
                                     imageData: imageData,
                                     detail: detail
+                                )
+                            )
+                        )
+                    }
+                ),
+                toolCallId: toolCallId
+            )
+        )
+    }
+    
+    /// 创建带视频的工具响应消息
+    public static nonisolated func tool(
+        _ text: String,
+        videos videoDatas: [Data],
+        fps: Double? = nil,
+        toolCallId: String
+    ) -> Self {
+        return .tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        ToolMessageParam.Content.ContentPart.video(
+                            ToolMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: ToolMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
+                                )
+                            )
+                        )
+                    } + [
+                        ToolMessageParam.Content.ContentPart.text(
+                            ToolMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                toolCallId: toolCallId
+            )
+        )
+    }
+    
+    /// 创建只有视频的工具响应消息
+    public static nonisolated func tool(
+        videos videoDatas: [Data],
+        fps: Double? = nil,
+        toolCallId: String
+    ) -> Self {
+        return .tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        ToolMessageParam.Content.ContentPart.video(
+                            ToolMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: ToolMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
                                 )
                             )
                         )
@@ -379,6 +519,31 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
         self.append(.user(text, name: name))
     }
     
+    /// 添加带视频的用户消息
+    public mutating func addUserMessageWithVideos(_ text: String, videoDatas: [Data], fps: Double? = nil, name: String? = nil) {
+        self.append(.user(
+            UserMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        UserMessageParam.Content.ContentPart.video(
+                            UserMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
+                                )
+                            )
+                        )
+                    } + [
+                        UserMessageParam.Content.ContentPart.text(
+                            UserMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                name: name
+            )
+        ))
+    }
+    
     /// 添加系统消息
     public mutating func addSystemMessage(_ text: String, name: String? = nil) {
         self.append(.system(text, name: name))
@@ -434,6 +599,31 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
                                 imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
                                     imageData: imageData,
                                     detail: detail
+                                )
+                            )
+                        )
+                    } + [
+                        ToolMessageParam.Content.ContentPart.text(
+                            ToolMessageParam.Content.ContentPart.TextContent(text: text)
+                        )
+                    ]
+                ),
+                toolCallId: toolCallId
+            )
+        ))
+    }
+    
+    /// 添加带视频的工具响应消息
+    public mutating func addToolMessageWithVideos(_ text: String, videoDatas: [Data], fps: Double? = nil, toolCallId: String) {
+        self.append(.tool(
+            ToolMessageParam(
+                content: .contentParts(
+                    videoDatas.map { videoData in
+                        ToolMessageParam.Content.ContentPart.video(
+                            ToolMessageParam.Content.ContentPart.VideoContent(
+                                videoUrl: ToolMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                    videoData: videoData,
+                                    fps: fps
                                 )
                             )
                         )
