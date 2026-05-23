@@ -57,6 +57,7 @@ public struct UserMessageParam: Codable, Sendable {
         public enum ContentPart: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
+            case video(VideoContent)
             
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -67,6 +68,8 @@ public struct UserMessageParam: Codable, Sendable {
                     self = .text(try TextContent(from: decoder))
                 case "image_url":
                     self = .image(try ImageContent(from: decoder))
+                case "video_url":
+                    self = .video(try VideoContent(from: decoder))
                 default:
                     throw DecodingError.dataCorrupted(DecodingError.Context(
                         codingPath: decoder.codingPath,
@@ -81,6 +84,8 @@ public struct UserMessageParam: Codable, Sendable {
                     try textContent.encode(to: encoder)
                 case .image(let imageContent):
                     try imageContent.encode(to: encoder)
+                case .video(let videoContent):
+                    try videoContent.encode(to: encoder)
                 }
             }
             
@@ -154,6 +159,75 @@ public struct UserMessageParam: Codable, Sendable {
                         case low
                         case high 
                         case auto
+                    }
+                }
+            }
+            
+            /// 视频内容
+            public struct VideoContent: Codable, Sendable {
+                public let type: String = "video_url"
+                public let videoUrl: VideoURL
+                
+                public init(videoUrl: VideoURL) {
+                    self.videoUrl = videoUrl
+                }
+                
+                private enum CodingKeys: String, CodingKey {
+                    case type
+                    case videoUrl = "video_url"
+                }
+                
+                /// 视频 URL 或 Base64 数据
+                public struct VideoURL: Codable, Sendable {
+                    public let url: String
+                    public let fps: Double?
+                    
+                    public init(url: String, fps: Double? = nil) {
+                        self.url = url
+                        self.fps = fps
+                    }
+                    
+                    public init(videoData: Data, fps: Double? = nil) {
+                        let base64String = videoData.base64EncodedString()
+                        let mimeType = Self.detectVideoMimeType(from: videoData)
+                        self.url = "data:\(mimeType);base64,\(base64String)"
+                        self.fps = fps
+                    }
+                    
+                    /// 检测视频 MIME 类型
+                    private static func detectVideoMimeType(from data: Data) -> String {
+                        guard data.count >= 8 else { return "video/mp4" }
+                        
+                        let bytes = [UInt8](data)
+                        
+                        // WebM/MKV: 1A 45 DF A3
+                        if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
+                            return "video/webm"
+                        }
+                        
+                        // AVI: 52 49 46 46 (RIFF)
+                        if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
+                            return "video/avi"
+                        }
+                        
+                        // WMV: 30 26 B2 75 (ASF)
+                        if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
+                            return "video/x-ms-wmv"
+                        }
+                        
+                        // MP4/MOV: 检查 offset 4-7 的 "ftyp"
+                        let ftypBytes = bytes[4..<8]
+                        if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
+                            return "video/mp4"
+                        }
+                        
+                        // 3GPP: 检查 offset 4-6 的 "3gp"
+                        let threeGpBytes = bytes[4..<7]
+                        if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
+                            return "video/3gpp"
+                        }
+                        
+                        return "video/mp4" // 默认
                     }
                 }
             }
@@ -323,6 +397,7 @@ public struct ToolMessageParam: Codable, Sendable {
         public enum ContentPart: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
+            case video(VideoContent)
             
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -333,6 +408,8 @@ public struct ToolMessageParam: Codable, Sendable {
                     self = .text(try TextContent(from: decoder))
                 case "image_url":
                     self = .image(try ImageContent(from: decoder))
+                case "video_url":
+                    self = .video(try VideoContent(from: decoder))
                 default:
                     throw DecodingError.dataCorrupted(DecodingError.Context(
                         codingPath: decoder.codingPath,
@@ -347,6 +424,8 @@ public struct ToolMessageParam: Codable, Sendable {
                     try textContent.encode(to: encoder)
                 case .image(let imageContent):
                     try imageContent.encode(to: encoder)
+                case .video(let videoContent):
+                    try videoContent.encode(to: encoder)
                 }
             }
             
@@ -418,6 +497,75 @@ public struct ToolMessageParam: Codable, Sendable {
                     }
                 }
             }
+            
+            /// 视频内容
+            public struct VideoContent: Codable, Sendable {
+                public let type: String = "video_url"
+                public let videoUrl: VideoURL
+                
+                public init(videoUrl: VideoURL) {
+                    self.videoUrl = videoUrl
+                }
+                
+                private enum CodingKeys: String, CodingKey {
+                    case type
+                    case videoUrl = "video_url"
+                }
+                
+                /// 视频 URL 或 Base64 数据
+                public struct VideoURL: Codable, Sendable {
+                    public let url: String
+                    public let fps: Double?
+                    
+                    public init(url: String, fps: Double? = nil) {
+                        self.url = url
+                        self.fps = fps
+                    }
+                    
+                    public init(videoData: Data, fps: Double? = nil) {
+                        let base64String = videoData.base64EncodedString()
+                        let mimeType = Self.detectVideoMimeType(from: videoData)
+                        self.url = "data:\(mimeType);base64,\(base64String)"
+                        self.fps = fps
+                    }
+                    
+                    /// 检测视频 MIME 类型
+                    private static func detectVideoMimeType(from data: Data) -> String {
+                        guard data.count >= 8 else { return "video/mp4" }
+                        
+                        let bytes = [UInt8](data)
+                        
+                        // WebM/MKV: 1A 45 DF A3
+                        if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
+                            return "video/webm"
+                        }
+                        
+                        // AVI: 52 49 46 46 (RIFF)
+                        if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
+                            return "video/avi"
+                        }
+                        
+                        // WMV: 30 26 B2 75 (ASF)
+                        if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
+                            return "video/x-ms-wmv"
+                        }
+                        
+                        // MP4/MOV: 检查 offset 4-7 的 "ftyp"
+                        let ftypBytes = bytes[4..<8]
+                        if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
+                            return "video/mp4"
+                        }
+                        
+                        // 3GPP: 检查 offset 4-6 的 "3gp"
+                        let threeGpBytes = bytes[4..<7]
+                        if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
+                            return "video/3gpp"
+                        }
+                        
+                        return "video/mp4" // 默认
+                    }
+                }
+            }
         }
     }
 }
@@ -475,6 +623,73 @@ public struct ContentPartImageParam: Codable {
             case low
             case high
             case auto
+        }
+    }
+}
+
+// MARK: - Content Part Video Param
+
+/// 视频内容部分参数
+public struct ContentPartVideoParam: Codable {
+    public let videoUrl: VideoURL
+    
+    public init(videoUrl: VideoURL) {
+        self.videoUrl = videoUrl
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case videoUrl = "video_url"
+    }
+    
+    public struct VideoURL: Codable {
+        public let url: String
+        public let fps: Double?
+        
+        public init(url: String, fps: Double? = nil) {
+            self.url = url
+            self.fps = fps
+        }
+        
+        public init(videoData: Data, fps: Double? = nil) {
+            let base64String = videoData.base64EncodedString()
+            let mimeType = Self.detectVideoMimeType(from: videoData)
+            self.url = "data:\(mimeType);base64,\(base64String)"
+            self.fps = fps
+        }
+        
+        private static func detectVideoMimeType(from data: Data) -> String {
+            guard data.count >= 8 else { return "video/mp4" }
+            
+            let bytes = [UInt8](data)
+            
+            // WebM/MKV: 1A 45 DF A3
+            if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
+                return "video/webm"
+            }
+            
+            // AVI: 52 49 46 46 (RIFF)
+            if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
+                return "video/avi"
+            }
+            
+            // WMV: 30 26 B2 75 (ASF)
+            if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
+                return "video/x-ms-wmv"
+            }
+            
+            // MP4/MOV: 检查 offset 4-7 的 "ftyp"
+            let ftypBytes = bytes[4..<8]
+            if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
+                return "video/mp4"
+            }
+            
+            // 3GPP: 检查 offset 4-6 的 "3gp"
+            let threeGpBytes = bytes[4..<7]
+            if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
+                return "video/3gpp"
+            }
+            
+            return "video/mp4" // 默认
         }
     }
 }
