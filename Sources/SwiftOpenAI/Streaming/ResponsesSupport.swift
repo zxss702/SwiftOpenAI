@@ -371,6 +371,11 @@ private nonisolated func encodeResponsesUserContent(
                     "image_url": image.imageUrl.url,
                     "detail": image.imageUrl.detail.rawValue
                 ]
+            case .video(let video):
+                return [
+                    "type": "input_image",
+                    "image_url": video.videoUrl.url
+                ]
             }
         }
     }
@@ -395,6 +400,11 @@ private nonisolated func encodeResponsesToolOutput(
                     "type": "input_image",
                     "image_url": image.imageUrl.url,
                     "detail": image.imageUrl.detail.rawValue
+                ]
+            case .video(let video):
+                return [
+                    "type": "input_image",
+                    "image_url": video.videoUrl.url
                 ]
             }
         }
