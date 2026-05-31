@@ -189,6 +189,57 @@ extension ChatQuery.ChatCompletionMessageParam {
         )
     }
     
+    /// 创建同时带图片和视频的用户消息
+    public static nonisolated func user(
+        _ text: String,
+        images: [Data]? = nil,
+        videos: [Data]? = nil,
+        imageDetail: UserMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        videoFps: Double? = nil,
+        name: String? = nil
+    ) -> Self {
+        var parts: [UserMessageParam.Content.ContentPart] = []
+        
+        if let images = images {
+            parts.append(contentsOf: images.map { imageData in
+                UserMessageParam.Content.ContentPart.image(
+                    UserMessageParam.Content.ContentPart.ImageContent(
+                        imageUrl: UserMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                            imageData: imageData,
+                            detail: imageDetail
+                        )
+                    )
+                )
+            })
+        }
+        
+        if let videos = videos {
+            parts.append(contentsOf: videos.map { videoData in
+                UserMessageParam.Content.ContentPart.video(
+                    UserMessageParam.Content.ContentPart.VideoContent(
+                        videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                            videoData: videoData,
+                            fps: videoFps
+                        )
+                    )
+                )
+            })
+        }
+        
+        parts.append(
+            UserMessageParam.Content.ContentPart.text(
+                UserMessageParam.Content.ContentPart.TextContent(text: text)
+            )
+        )
+        
+        return .user(
+            UserMessageParam(
+                content: .contentParts(parts),
+                name: name
+            )
+        )
+    }
+    
     // MARK: - Tool Messages
     
     /// 创建简单文本工具响应消息
@@ -309,6 +360,57 @@ extension ChatQuery.ChatCompletionMessageParam {
                         )
                     }
                 ),
+                toolCallId: toolCallId
+            )
+        )
+    }
+    
+    /// 创建同时带图片和视频的工具响应消息
+    public static nonisolated func tool(
+        _ text: String,
+        images: [Data]? = nil,
+        videos: [Data]? = nil,
+        imageDetail: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        videoFps: Double? = nil,
+        toolCallId: String
+    ) -> Self {
+        var parts: [ToolMessageParam.Content.ContentPart] = []
+        
+        if let images = images {
+            parts.append(contentsOf: images.map { imageData in
+                ToolMessageParam.Content.ContentPart.image(
+                    ToolMessageParam.Content.ContentPart.ImageContent(
+                        imageUrl: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                            imageData: imageData,
+                            detail: imageDetail
+                        )
+                    )
+                )
+            })
+        }
+        
+        if let videos = videos {
+            parts.append(contentsOf: videos.map { videoData in
+                ToolMessageParam.Content.ContentPart.video(
+                    ToolMessageParam.Content.ContentPart.VideoContent(
+                        videoUrl: ToolMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                            videoData: videoData,
+                            fps: videoFps
+                        )
+                    )
+                )
+            })
+        }
+        
+        parts.append(
+            ToolMessageParam.Content.ContentPart.text(
+                ToolMessageParam.Content.ContentPart.TextContent(text: text)
+            )
+        )
+        
+        return .tool(
+            ToolMessageParam(
+                content: .contentParts(parts),
                 toolCallId: toolCallId
             )
         )
@@ -636,5 +738,28 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
                 toolCallId: toolCallId
             )
         ))
+    }
+    /// 添加同时带图片和视频的用户消息
+    public mutating func addUserMessageWithMultimedia(
+        _ text: String,
+        images: [Data]? = nil,
+        videos: [Data]? = nil,
+        imageDetail: UserMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        videoFps: Double? = nil,
+        name: String? = nil
+    ) {
+        self.append(.user(text, images: images, videos: videos, imageDetail: imageDetail, videoFps: videoFps, name: name))
+    }
+    
+    /// 添加同时带图片和视频的工具响应消息
+    public mutating func addToolMessageWithMultimedia(
+        _ text: String,
+        images: [Data]? = nil,
+        videos: [Data]? = nil,
+        imageDetail: ToolMessageParam.Content.ContentPart.ImageContent.ImageURL.Detail = .auto,
+        videoFps: Double? = nil,
+        toolCallId: String
+    ) {
+        self.append(.tool(text, images: images, videos: videos, imageDetail: imageDetail, videoFps: videoFps, toolCallId: toolCallId))
     }
 }
