@@ -159,7 +159,14 @@ public struct SYToolArgsMacro: ExtensionMacro {
                             Diagnostic(node: node, message: SYToolArgsMacroDiagnostic.enumAssociatedValuesNotSupported))
                         return nil
                     }
-                    return element.name.text
+                    var caseValue = element.name.text
+                    if let rawValue = element.rawValue {
+                        if let strExpr = rawValue.value.as(StringLiteralExprSyntax.self),
+                           let segment = strExpr.segments.first?.as(StringSegmentSyntax.self) {
+                            caseValue = segment.content.text
+                        }
+                    }
+                    return caseValue
                 }
                 return nil
             }
