@@ -495,11 +495,11 @@ enum ProviderRequestEncoder {
             if let description = jsonSchema.description {
                 encodedSchema["description"] = description
             }
-            if let schemaData = jsonSchema.schema.data(using: .utf8),
-               let schemaObject = try? JSONSerialization.jsonObject(with: schemaData, options: []) {
-                encodedSchema["schema"] = schemaObject
-            } else {
-                encodedSchema["schema"] = jsonSchema.schema
+            if let strict = jsonSchema.strict {
+                encodedSchema["strict"] = strict
+            }
+            if let schemaDict = jsonSchema.schema {
+                encodedSchema["schema"] = schemaDict.toAnyDictionary()
             }
             encoded["json_schema"] = encodedSchema
         }

@@ -137,6 +137,11 @@ public struct ChatQuery: Codable, Sendable {
         public let type: String
         public let jsonSchema: JSONSchema?
         
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case jsonSchema = "json_schema"
+        }
+        
         public init(type: String, jsonSchema: JSONSchema? = nil) {
             self.type = type
             self.jsonSchema = jsonSchema
@@ -146,12 +151,27 @@ public struct ChatQuery: Codable, Sendable {
         public struct JSONSchema: Codable, Sendable {
             public let name: String
             public let description: String?
-            public let schema: String  // 简化为字符串，避免复杂的[String: Any]编码
+            public let strict: Bool?
+            public let schema: [String: AnyCodableValue]?
             
+            public init(name: String, description: String? = nil, strict: Bool? = nil, schema: [String: AnyCodableValue]? = nil) {
+                self.name = name
+                self.description = description
+                self.strict = strict
+                self.schema = schema
+            }
+            
+            /// 保留为了向后兼容使用手写 JSON 字符串初始化的场景
             public init(name: String, description: String? = nil, schema: String) {
                 self.name = name
                 self.description = description
-                self.schema = schema
+                self.strict = nil
+                if let data = schema.data(using: .utf8),
+                   let dict = try? JSONDecoder().decode([String: AnyCodableValue].self, from: data) {
+                    self.schema = dict
+                } else {
+                    self.schema = nil
+                }
             }
         }
     }
@@ -516,3 +536,56 @@ public extension Dictionary where Key == String, Value == AnyCodableValue {
         mapValues { $0.anyValue }
     }
 }
+
+public extension ChatQuery.ResponseFormat {
+    
+    /// 返回 `json_object` 模式，强制模型返回合法的 JSON 对象
+    static var jsonObject: ChatQuery.ResponseFormat {
+        ChatQuery.ResponseFormat(type: "json_object")
+    }
+    
+    /// 使用 @SYToolArgs 宏修饰的类型来自动生成 JSON Schema
+    static func jsonSchema<T: SYToolArgsConvertible>(
+        name: String,
+        description: String? = nil,
+        type: T.Type,
+        strict: Bool? = true
+    ) -> ChatQuery.ResponseFormat {
+        let schema = T.parametersSchema
+        return ChatQuery.ResponseFormat(
+            type: "json_schema",
+            jsonSchema: JSONSchema(
+                name: name,
+                description: description,
+                strict: strict,
+                schema: schema
+            )
+        )
+    }
+    
+    /// 使用 @AIModelSchema 宏修饰的类型来自动生成 JSON Schema
+    static func jsonSchema<T: AIModelSchema>(
+        name: String,
+        description: String? = nil,
+        type: T.Type,
+        strict: Bool? = true
+    ) -> ChatQuery.ResponseFormat {
+        var schemaDict: [String: AnyCodableValue]? = nil
+        let outputSchemaStr = T.outputSchema
+        if let data = outputSchemaStr.data(using: .utf8),
+           let dict = try? JSONDecoder().decode([String: AnyCodableValue].self, from: data) {
+            schemaDict = dict
+        }
+        
+        return ChatQuery.ResponseFormat(
+            type: "json_schema",
+            jsonSchema: JSONSchema(
+                name: name,
+                description: description,
+                strict: strict,
+                schema: schemaDict
+            )
+        )
+    }
+}
+

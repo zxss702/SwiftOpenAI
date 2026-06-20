@@ -495,5 +495,51 @@ final class ExtendedFeaturesTests: XCTestCase {
         XCTAssertTrue(required?.contains("修改方针") == true)
     }
     
-
+    // MARK: - ResponseFormat Schema Tests
+    
+    func testResponseFormatSYToolArgs() throws {
+        let responseFormat = ChatQuery.ResponseFormat.jsonSchema(
+            name: "math_tool",
+            description: "A tool for math operations",
+            type: ComplexToolArgs.self,
+            strict: true
+        )
+        
+        XCTAssertEqual(responseFormat.type, "json_schema")
+        XCTAssertEqual(responseFormat.jsonSchema?.name, "math_tool")
+        XCTAssertEqual(responseFormat.jsonSchema?.description, "A tool for math operations")
+        XCTAssertEqual(responseFormat.jsonSchema?.strict, true)
+        
+        let schemaDict = responseFormat.jsonSchema?.schema
+        XCTAssertNotNil(schemaDict)
+        XCTAssertEqual(schemaDict?["type"], .string("object"))
+        XCTAssertNotNil(schemaDict?["properties"])
+        
+        // 测试向后兼容的 String init
+        let jsonString = """
+        {"type":"object","properties":{"name":{"type":"string"}}}
+        """
+        let oldFormat = ChatQuery.ResponseFormat(
+            type: "json_schema",
+            jsonSchema: .init(name: "old_test", schema: jsonString)
+        )
+        
+        XCTAssertEqual(oldFormat.jsonSchema?.schema?["type"], .string("object"))
+    }
+    
+    func testResponseFormatAIModelSchema() throws {
+        let responseFormat = ChatQuery.ResponseFormat.jsonSchema(
+            name: "weather_info",
+            type: WeatherInfo.self,
+            strict: false
+        )
+        
+        XCTAssertEqual(responseFormat.type, "json_schema")
+        XCTAssertEqual(responseFormat.jsonSchema?.name, "weather_info")
+        XCTAssertEqual(responseFormat.jsonSchema?.strict, false)
+        
+        let schemaDict = responseFormat.jsonSchema?.schema
+        XCTAssertNotNil(schemaDict)
+        XCTAssertEqual(schemaDict?["type"], .string("object"))
+    }
 }

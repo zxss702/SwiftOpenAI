@@ -466,14 +466,16 @@ private nonisolated func encodeResponsesTextControls(
     switch responseFormat.type {
     case "json_schema":
         guard let schema = responseFormat.jsonSchema else { return nil }
-        let schemaObject = try parseJSONObjectString(schema.schema)
+        var formatDict: [String: Any] = [
+            "type": "json_schema",
+            "name": schema.name,
+            "strict": schema.strict ?? true
+        ]
+        if let schemaDict = schema.schema {
+            formatDict["schema"] = schemaDict.toAnyDictionary()
+        }
         return [
-            "format": [
-                "type": "json_schema",
-                "name": schema.name,
-                "strict": true,
-                "schema": schemaObject
-            ]
+            "format": formatDict
         ]
     case "json_object":
         return [
