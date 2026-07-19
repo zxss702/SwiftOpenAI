@@ -493,13 +493,6 @@ private nonisolated func encodeResponsesTextControls(
     }
 }
 
-private nonisolated func parseJSONObjectString(_ schema: String) throws -> Any {
-    guard let data = schema.data(using: .utf8) else {
-        throw OpenAIError.invalidResponse("JSON Schema 不是有效的 UTF-8 字符串", code: 0)
-    }
-    return try JSONSerialization.jsonObject(with: data)
-}
-
 private nonisolated func encodeStop(_ stop: ChatQuery.Stop) throws -> Any {
     switch stop {
     case .string(let string):
