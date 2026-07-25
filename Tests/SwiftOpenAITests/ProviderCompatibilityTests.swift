@@ -417,6 +417,82 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(normalizedSecond.choices.first?.delta.toolCalls?.first?.function?.arguments, "\"a\":1}")
     }
 
+    func testUnsupportedMultimediaConvertsUserAndToolToPlaintext() async throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let query = ChatQuery(
+            messages: [
+                .user("请分析这张图片", imageDatas: imageData, detail: .high),
+                .assistant("", toolCalls: [
+                    AssistantMessageParam.ToolCallParam(
+                        id: "call_1",
+                        function: AssistantMessageParam.ToolCallParam.FunctionCall(
+                            name: "analyze_image",
+                            arguments: "{}"
+                        )
+                    )
+                ]),
+                .tool(
+                    "工具结果",
+                    images: [imageData],
+                    detail: .high,
+                    toolCallId: "call_1"
+                )
+            ],
+            model: "MiniMax-M2.7"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimaxi.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, 3)
+
+        let userMessage = try XCTUnwrap(messages[0])
+        XCTAssertEqual(userMessage["role"] as? String, "user")
+        let userContent = try XCTUnwrap(userMessage["content"] as? String)
+        XCTAssertTrue(userContent.contains("请分析这张图片"))
+        XCTAssertTrue(userContent.contains("image 不支持"))
+        XCTAssertFalse(userContent.contains("image_url"))
+
+        let toolMessage = try XCTUnwrap(messages[2])
+        XCTAssertEqual(toolMessage["role"] as? String, "tool")
+        XCTAssertEqual(toolMessage["tool_call_id"] as? String, "call_1")
+        let toolContent = try XCTUnwrap(toolMessage["content"] as? String)
+        XCTAssertTrue(toolContent.contains("工具结果"))
+        XCTAssertTrue(toolContent.contains("image 不支持"))
+    }
+
+    func testSupportedMultimediaKeepsImageUrlParts() async throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let query = ChatQuery(
+            messages: [
+                .user("请分析这张图片", imageDatas: imageData, detail: .high)
+            ],
+            model: "gpt-4o"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.openai.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first)
+        let parts = try XCTUnwrap(userMessage["content"] as? [[String: Any]])
+        XCTAssertTrue(parts.contains { ($0["type"] as? String) == "image_url" })
+        XCTAssertTrue(parts.contains { ($0["type"] as? String) == "text" })
+    }
+
     private func requestBody(from request: URLRequest) throws -> [String: Any] {
         let body = try XCTUnwrap(request.httpBody)
         let jsonObject = try JSONSerialization.jsonObject(with: body, options: [])

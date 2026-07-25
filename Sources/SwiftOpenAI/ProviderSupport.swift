@@ -326,36 +326,23 @@ enum ProviderRequestEncoder {
         _ messages: [ChatQuery.ChatCompletionMessageParam],
         family: ProviderFamily
     ) throws -> [[String: Any]] {
-        let filtered = family.supportsMultimedia
-            ? messages
-            : messages.filter { !messageContainsMultimedia($0) }
-        return try filtered.map { try encodeMessage($0, family: family) }
+        try messages.map { try encodeMessage($0, family: family) }
     }
 
-    /// 判断消息是否包含图像或视频等多媒体内容
-    private static func messageContainsMultimedia(_ message: ChatQuery.ChatCompletionMessageParam) -> Bool {
-        switch message {
-        case .user(let userMessage):
-            if case .contentParts(let parts) = userMessage.content {
-                return parts.contains(where: {
-                    if case .image = $0 { return true }
-                    if case .video = $0 { return true }
-                    return false
-                })
-            }
-            return false
-        case .tool(let toolMessage):
-            if case .contentParts(let parts) = toolMessage.content {
-                return parts.contains(where: {
-                    if case .image = $0 { return true }
-                    if case .video = $0 { return true }
-                    return false
-                })
-            }
-            return false
-        case .system, .assistant:
-            return false
+    /// 不支持多媒体时：保留文本并追加提示，避免整条删除导致 tool_call 不配对
+    private static func plaintextReplacingUnsupportedMultimedia(
+        texts: [String],
+        hasImage: Bool,
+        hasVideo: Bool
+    ) -> String {
+        var segments = texts.filter { !$0.isEmpty }
+        if hasImage {
+            segments.append("image 不支持")
         }
+        if hasVideo {
+            segments.append("video 不支持")
+        }
+        return segments.joined(separator: "\n")
     }
 
     private static func encodeMessage(
@@ -375,7 +362,10 @@ enum ProviderRequestEncoder {
 
         case .user(let userMessage):
             var encoded: [String: Any] = ["role": "user"]
-            encoded["content"] = encodeUserContent(userMessage.content)
+            encoded["content"] = encodeUserContent(
+                userMessage.content,
+                supportsMultimedia: family.supportsMultimedia
+            )
             if let name = userMessage.name {
                 encoded["name"] = name
             }
@@ -411,16 +401,44 @@ enum ProviderRequestEncoder {
                 "role": "tool",
                 "tool_call_id": toolMessage.toolCallId
             ]
-            encoded["content"] = encodeToolContent(toolMessage.content)
+            encoded["content"] = encodeToolContent(
+                toolMessage.content,
+                supportsMultimedia: family.supportsMultimedia
+            )
             return encoded
         }
     }
 
-    private static func encodeUserContent(_ content: UserMessageParam.Content) -> Any {
+    private static func encodeUserContent(
+        _ content: UserMessageParam.Content,
+        supportsMultimedia: Bool
+    ) -> Any {
         switch content {
         case .string(let string):
             return string
         case .contentParts(let parts):
+            if !supportsMultimedia {
+                var texts: [String] = []
+                var hasImage = false
+                var hasVideo = false
+                for part in parts {
+                    switch part {
+                    case .text(let textContent):
+                        texts.append(textContent.text)
+                    case .image:
+                        hasImage = true
+                    case .video:
+                        hasVideo = true
+                    }
+                }
+                if hasImage || hasVideo {
+                    return plaintextReplacingUnsupportedMultimedia(
+                        texts: texts,
+                        hasImage: hasImage,
+                        hasVideo: hasVideo
+                    )
+                }
+            }
             return parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let textContent):
@@ -452,11 +470,36 @@ enum ProviderRequestEncoder {
         }
     }
 
-    private static func encodeToolContent(_ content: ToolMessageParam.Content) -> Any {
+    private static func encodeToolContent(
+        _ content: ToolMessageParam.Content,
+        supportsMultimedia: Bool
+    ) -> Any {
         switch content {
         case .textContent(let string):
             return string
         case .contentParts(let parts):
+            if !supportsMultimedia {
+                var texts: [String] = []
+                var hasImage = false
+                var hasVideo = false
+                for part in parts {
+                    switch part {
+                    case .text(let textContent):
+                        texts.append(textContent.text)
+                    case .image:
+                        hasImage = true
+                    case .video:
+                        hasVideo = true
+                    }
+                }
+                if hasImage || hasVideo {
+                    return plaintextReplacingUnsupportedMultimedia(
+                        texts: texts,
+                        hasImage: hasImage,
+                        hasVideo: hasVideo
+                    )
+                }
+            }
             return parts.map { part -> [String: Any] in
                 switch part {
                 case .text(let textContent):
