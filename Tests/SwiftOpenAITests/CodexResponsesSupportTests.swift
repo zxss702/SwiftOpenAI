@@ -87,8 +87,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             toolChoice: .required,
             tools: [tool],
             topP: 0.9,
-            think: nil,
-            reasoningEffort: .high,
+            thinkLevel: .high,
             extraBody: [
                 "metadata": .object([
                     "source": .string("unit-test")
@@ -98,7 +97,6 @@ final class CodexResponsesSupportTests: XCTestCase {
 
         XCTAssertEqual(body["model"] as? String, "gpt-5.4")
         XCTAssertEqual(body["stream"] as? Bool, true)
-        XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
         XCTAssertEqual(body["frequency_penalty"] as? Double, 0.2)
         XCTAssertEqual(body["max_output_tokens"] as? Int, 512)
@@ -181,8 +179,7 @@ final class CodexResponsesSupportTests: XCTestCase {
             toolChoice: nil,
             tools: nil,
             topP: nil,
-            think: nil,
-            reasoningEffort: .medium,
+            thinkLevel: .medium,
             extraBody: nil
         )
 

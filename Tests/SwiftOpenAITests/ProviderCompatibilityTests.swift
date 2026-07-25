@@ -50,7 +50,7 @@ final class ProviderCompatibilityTests: XCTestCase {
             maxCompletionTokens: 128,
             parallelToolCalls: true,
             topP: 0.85,
-            think: true
+            thinkLevel: .high
         )
         let prepared = try await createChatRequest(
             query: query,
@@ -68,6 +68,8 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
         XCTAssertEqual(body["top_p"] as? Double, 0.85)
         XCTAssertEqual(body["reasoning_split"] as? Bool, true)
+        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
+        XCTAssertEqual(thinking["type"] as? String, "adaptive")
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let assistantMessage = try XCTUnwrap(messages.first)
@@ -76,32 +78,46 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(reasoningDetails.first?["text"] as? String, "think-first")
     }
 
-    func testMiniMaxReasoningSplitFollowsThink() async throws {
-        for (think, expected) in [(Optional(true), Optional(true)), (Optional(false), Optional(false)), (Optional<Bool>.none, Optional<Bool>.none)] {
-            let prepared = try await createChatRequest(
-                query: ChatQuery(
-                    messages: [.user("hello")],
-                    model: "MiniMax-M2.7",
-                    think: think
-                ),
-                configuration: OpenAIConfiguration(
-                    token: "test-token",
-                    host: "api.minimax.io",
-                    basePath: "/v1"
-                )
+    func testMiniMaxAlwaysEnablesReasoningSplitAndMapsThinkLevel() async throws {
+        let nonePrepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "MiniMax-M2.7",
+                thinkLevel: ThinkLevel.none
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimax.io",
+                basePath: "/v1"
             )
+        )
+        let noneBody = try requestBody(from: nonePrepared.urlRequest)
+        XCTAssertEqual(noneBody["reasoning_split"] as? Bool, true)
+        let noneThinking = try XCTUnwrap(noneBody["thinking"] as? [String: Any])
+        XCTAssertEqual(noneThinking["type"] as? String, "disabled")
 
-            let body = try requestBody(from: prepared.urlRequest)
-            XCTAssertEqual(body["reasoning_split"] as? Bool, expected)
-        }
+        let nilPrepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "MiniMax-M2.7"
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.minimax.io",
+                basePath: "/v1"
+            )
+        )
+        let nilBody = try requestBody(from: nilPrepared.urlRequest)
+        XCTAssertEqual(nilBody["reasoning_split"] as? Bool, true)
+        XCTAssertNil(nilBody["thinking"])
     }
 
-    func testMiniMaxReasoningSplitUsesThinkInsteadOfForcingTrue() async throws {
+    func testMiniMaxReasoningSplitOverridesExtraBody() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(
                 messages: [.user("hello")],
                 model: "MiniMax-M2.7",
-                think: false,
+                thinkLevel: ThinkLevel.none,
                 extraBody: [
                     "reasoning_split": .bool(false),
                     "extra_body": .object([
@@ -117,7 +133,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         )
 
         let body = try requestBody(from: prepared.urlRequest)
-        XCTAssertEqual(body["reasoning_split"] as? Bool, false)
+        XCTAssertEqual(body["reasoning_split"] as? Bool, true)
         let extraBody = try XCTUnwrap(body["extra_body"] as? [String: Any])
         XCTAssertEqual(extraBody["custom_flag"] as? String, "keep-me")
     }
@@ -193,7 +209,7 @@ final class ProviderCompatibilityTests: XCTestCase {
                 .user("hello")
             ],
             model: "kimi-k2",
-            think: true
+            thinkLevel: .medium
         )
         let prepared = try await createChatRequest(
             query: query,
@@ -213,7 +229,7 @@ final class ProviderCompatibilityTests: XCTestCase {
 
     func testGLMAndDashScopeThinkMappings() async throws {
         let glmPrepared = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", think: false),
+            query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", thinkLevel: ThinkLevel.none),
             configuration: OpenAIConfiguration(
                 token: "test-token",
                 host: "open.bigmodel.cn",
@@ -223,9 +239,23 @@ final class ProviderCompatibilityTests: XCTestCase {
         let glmBody = try requestBody(from: glmPrepared.urlRequest)
         let glmThinking = try XCTUnwrap(glmBody["thinking"] as? [String: Any])
         XCTAssertEqual(glmThinking["type"] as? String, "disabled")
+        XCTAssertNil(glmBody["reasoning_effort"])
+
+        let glmHighPrepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", thinkLevel: .high),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "open.bigmodel.cn",
+                basePath: "/api/paas/v4"
+            )
+        )
+        let glmHighBody = try requestBody(from: glmHighPrepared.urlRequest)
+        let glmHighThinking = try XCTUnwrap(glmHighBody["thinking"] as? [String: Any])
+        XCTAssertEqual(glmHighThinking["type"] as? String, "enabled")
+        XCTAssertEqual(glmHighBody["reasoning_effort"] as? String, "high")
 
         let dashscopePrepared = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "qwen-plus", think: true),
+            query: ChatQuery(messages: [.user("hello")], model: "qwen-plus", thinkLevel: .medium),
             configuration: OpenAIConfiguration(
                 token: "test-token",
                 host: "dashscope.aliyuncs.com",
@@ -234,6 +264,75 @@ final class ProviderCompatibilityTests: XCTestCase {
         )
         let dashscopeBody = try requestBody(from: dashscopePrepared.urlRequest)
         XCTAssertEqual(dashscopeBody["enable_thinking"] as? Bool, true)
+    }
+
+    func testDeepSeekThinkLevelMappings() async throws {
+        let nonePrepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: ThinkLevel.none),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let noneBody = try requestBody(from: nonePrepared.urlRequest)
+        let noneThinking = try XCTUnwrap(noneBody["thinking"] as? [String: Any])
+        XCTAssertEqual(noneThinking["type"] as? String, "disabled")
+        XCTAssertNil(noneBody["reasoning_effort"])
+
+        let xhighPrepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .xhigh),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let xhighBody = try requestBody(from: xhighPrepared.urlRequest)
+        let xhighThinking = try XCTUnwrap(xhighBody["thinking"] as? [String: Any])
+        XCTAssertEqual(xhighThinking["type"] as? String, "enabled")
+        XCTAssertEqual(xhighBody["reasoning_effort"] as? String, "max")
+
+        let lowPrepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .low),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let lowBody = try requestBody(from: lowPrepared.urlRequest)
+        XCTAssertEqual(lowBody["reasoning_effort"] as? String, "high")
+    }
+
+    func testGenericOpenAICompatiblePassesThinkLevelEffort() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "custom-model", thinkLevel: .xhigh),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.siliconflow.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
+        XCTAssertEqual(thinking["type"] as? String, "enabled")
+        XCTAssertEqual(body["reasoning_effort"] as? String, "xhigh")
+    }
+
+    func testOpenAIUsesTopLevelReasoningEffort() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "gpt-5.4", thinkLevel: .high),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.openai.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        XCTAssertEqual(body["reasoning_effort"] as? String, "high")
+        XCTAssertNil(body["thinking"])
+        XCTAssertNil(body["reasoning"])
     }
 
     func testMiniMaxCompletionDecodesReasoningDetailsAndUsage() throws {

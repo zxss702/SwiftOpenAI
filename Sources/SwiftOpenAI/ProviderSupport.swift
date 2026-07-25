@@ -117,8 +117,7 @@ struct CanonicalChatRequest: Sendable {
     let topP: Double?
     let user: String?
     let stream: Bool?
-    let think: Bool?
-    let reasoningEffort: OpenAIReasoningEffort?
+    let thinkLevel: ThinkLevel?
     let mergedExtraBody: [String: AnyCodableValue]
 }
 
@@ -210,8 +209,7 @@ enum ProviderRequestEncoder {
             topP: query.topP,
             user: query.user,
             stream: query.stream,
-            think: query.think,
-            reasoningEffort: query.reasoningEffort,
+            thinkLevel: query.thinkLevel,
             mergedExtraBody: mergeExtraBody(configuration.extraBody, query.extraBody)
         )
 
@@ -314,8 +312,7 @@ enum ProviderRequestEncoder {
         applyProviderDefaults(into: &body, request: request, family: family)
         applyThinking(
             into: &body,
-            think: request.think,
-            reasoningEffort: request.reasoningEffort,
+            thinkLevel: request.thinkLevel,
             family: family
         )
 
@@ -569,28 +566,65 @@ enum ProviderRequestEncoder {
 
     private static func applyThinking(
         into body: inout [String: Any],
-        think: Bool?,
-        reasoningEffort: OpenAIReasoningEffort?,
+        thinkLevel: ThinkLevel?,
         family: ProviderFamily
     ) {
         switch family {
         case .minimax:
             body["reasoning_split"] = true
-        case .zhipuGLM, .volcengineArk:
-            guard let think else { return }
+            guard let thinkLevel else { return }
             body["thinking"] = [
-                "type": think ? "enabled" : "disabled"
+                "type": thinkLevel.enablesReasoning ? "adaptive" : "disabled"
             ]
+
+        case .zhipuGLM, .volcengineArk:
+            guard let thinkLevel else { return }
+            body["thinking"] = [
+                "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
+            ]
+            if thinkLevel.enablesReasoning {
+                body["reasoning_effort"] = thinkLevel.rawValue
+            }
+
+        case .deepseek, .genericOpenAICompatible:
+            guard let thinkLevel else { return }
+            body["thinking"] = [
+                "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
+            ]
+            if thinkLevel.enablesReasoning {
+                body["reasoning_effort"] = deepSeekCompatibleReasoningEffort(for: thinkLevel, family: family)
+            }
+
         case .dashscope:
-            guard let think else { return }
-            body["enable_thinking"] = think
+            guard let thinkLevel else { return }
+            body["enable_thinking"] = thinkLevel.enablesReasoning
+
         case .openai:
-            guard let think else { return }
-            body["reasoning"] = [
-                "effort": think ? OpenAIReasoningEffort.medium.rawValue : OpenAIReasoningEffort.none.rawValue
-            ]
-        case .moonshot, .genericOpenAICompatible, .deepseek:
+            guard let thinkLevel else { return }
+            body["reasoning_effort"] = thinkLevel.rawValue
+
+        case .moonshot:
             break
+        }
+    }
+
+    /// DeepSeek 官方兼容：minimal/low/medium → high，xhigh → max；generic 透传原值
+    private static func deepSeekCompatibleReasoningEffort(
+        for thinkLevel: ThinkLevel,
+        family: ProviderFamily
+    ) -> String {
+        switch family {
+        case .deepseek:
+            switch thinkLevel {
+            case .none:
+                return ThinkLevel.none.rawValue
+            case .minimal, .low, .medium, .high:
+                return ThinkLevel.high.rawValue
+            case .xhigh:
+                return "max"
+            }
+        default:
+            return thinkLevel.rawValue
         }
     }
 

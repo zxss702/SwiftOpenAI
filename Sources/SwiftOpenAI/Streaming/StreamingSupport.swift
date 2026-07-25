@@ -21,8 +21,7 @@ import Foundation
 ///   - topP: nucleus sampling 参数
 ///   - user: 终端用户标识符
 ///   - stream: 是否使用流式传输，默认为 true
-///   - think: 统一的思考开关，按厂商自动映射
-///   - reasoningEffort: OpenAI/GPT 推理强度
+///   - thinkLevel: 统一思考强度（none 关闭，其余为等级），按厂商自动映射
 ///   - extraBody: 额外的请求体参数
 ///   - extraHeaders: 额外的 HTTP 请求头
 ///   - action: 流式结果回调闭包
@@ -59,8 +58,7 @@ nonisolated public func sendMessage(
     topP: Double? = nil,
     user: String? = nil,
     stream: Bool = true,
-    think: Bool? = nil,
-    reasoningEffort: OpenAIReasoningEffort? = nil,
+    thinkLevel: ThinkLevel? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -84,8 +82,7 @@ nonisolated public func sendMessage(
             topP: topP,
             user: user,
             stream: stream,
-            think: think,
-            reasoningEffort: reasoningEffort,
+            thinkLevel: thinkLevel,
             extraBody: extraBody,
             extraHeaders: extraHeaders,
             action: action
@@ -107,8 +104,7 @@ nonisolated public func sendMessage(
             tools: tools?.map(\.asChatCompletionTool),
             topP: topP,
             user: user,
-            think: think,
-            reasoningEffort: reasoningEffort,
+            thinkLevel: thinkLevel,
             extraBody: extraBody,
             extraHeaders: extraHeaders,
             action: action
@@ -135,8 +131,7 @@ nonisolated public func sendMessageSync(
     tools: [any OpenAIToolConvertible]? = nil,
     topP: Double? = nil,
     user: String? = nil,
-    think: Bool? = nil,
-    reasoningEffort: OpenAIReasoningEffort? = nil,
+    thinkLevel: ThinkLevel? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil
 ) async throws -> OpenAIChatResult {
@@ -158,8 +153,7 @@ nonisolated public func sendMessageSync(
             tools: tools,
             topP: topP,
             user: user,
-            think: think,
-            reasoningEffort: reasoningEffort,
+            thinkLevel: thinkLevel,
             extraBody: extraBody,
             extraHeaders: extraHeaders
         )
@@ -180,8 +174,7 @@ nonisolated public func sendMessageSync(
             tools: tools?.map(\.asChatCompletionTool),
             topP: topP,
             user: user,
-            think: think,
-            reasoningEffort: reasoningEffort,
+            thinkLevel: thinkLevel,
             extraBody: extraBody,
             extraHeaders: extraHeaders
         ) { _ in }
@@ -205,8 +198,7 @@ private nonisolated func sendCompletionsMessage(
     topP: Double?,
     user: String?,
     stream: Bool,
-    think: Bool?,
-    reasoningEffort: OpenAIReasoningEffort?,
+    thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -241,8 +233,7 @@ private nonisolated func sendCompletionsMessage(
         topP: topP,
         user: user,
         stream: stream,
-        think: think,
-        reasoningEffort: reasoningEffort,
+        thinkLevel: thinkLevel,
         extraBody: extraBody
     )
 
@@ -329,8 +320,7 @@ private nonisolated func sendCompletionsMessageSync(
     tools: [any OpenAIToolConvertible]?,
     topP: Double?,
     user: String?,
-    think: Bool?,
-    reasoningEffort: OpenAIReasoningEffort?,
+    thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?
 ) async throws -> OpenAIChatResult {
@@ -361,8 +351,7 @@ private nonisolated func sendCompletionsMessageSync(
         topP: topP,
         user: user,
         stream: false,
-        think: think,
-        reasoningEffort: reasoningEffort,
+        thinkLevel: thinkLevel,
         extraBody: extraBody
     )
 

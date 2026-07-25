@@ -390,12 +390,23 @@ if let toolCalls = message.toolCalls {
 
 ## 🤖 AI 思考过程
 
-访问 AI 的推理过程（支持 `reasoning` 和 `reasoning_content` 字段）：
+通过统一的 `thinkLevel` 控制思考强度（Codex 与 chat/completions 共用）：
+
+```swift
+public enum ThinkLevel: String, Codable {
+    case none, minimal, low, medium, high, xhigh
+}
+```
+
+- `nil`：不传思考参数，走厂商默认
+- `none`：关闭思考（传参请写 `ThinkLevel.none`，避免与 `Optional.none` 混淆）
+- 其余等级：开启思考，并由 Provider 映射到 `thinking` / `reasoning_effort` / `reasoning.effort` 等线格式
 
 ```swift
 let result = try await sendMessage(
     modelInfo: modelInfo,
-    messages: messages
+    messages: messages,
+    thinkLevel: .high
 ) { streamResult in
     // 实时查看 AI 思考过程
     if !streamResult.subThinkingText.isEmpty {
@@ -406,18 +417,10 @@ let result = try await sendMessage(
     if !streamResult.subText.isEmpty {
         print("💬 AI 回复: \(streamResult.subText)")
     }
-    
-    // 检查状态
-    switch streamResult.state {
-    case .wait:
-        print("⏳ 等待中...")
-    case .think:
-        print("🤔 思考中")
-    case .text:
-        print("📝 输出内容")
-    }
 }
 ```
+
+响应侧会归一化各厂商的 `reasoning` / `reasoning_content` / `reasoning_details` 到 `subThinkingText` / `fullThinkingText`。
 
 ## 🔄 非流式传输
 

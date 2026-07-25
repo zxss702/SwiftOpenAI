@@ -164,8 +164,7 @@ nonisolated func sendCodexResponsesMessage(
     tools: [ChatQuery.ChatCompletionToolParam]? = nil,
     topP: Double? = nil,
     user: String? = nil,
-    think: Bool? = nil,
-    reasoningEffort: OpenAIReasoningEffort? = nil,
+    thinkLevel: ThinkLevel? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -193,8 +192,7 @@ nonisolated func sendCodexResponsesMessage(
         toolChoice: toolChoice,
         tools: tools,
         topP: topP,
-        think: think,
-        reasoningEffort: reasoningEffort,
+        thinkLevel: thinkLevel,
         extraBody: extraBody,
         extraHeaders: extraHeaders
     )
@@ -231,8 +229,7 @@ nonisolated func makeCodexResponsesRequest(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    think: Bool?,
-    reasoningEffort: OpenAIReasoningEffort?,
+    thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?
 ) throws -> URLRequest {
@@ -254,8 +251,7 @@ nonisolated func makeCodexResponsesRequest(
         toolChoice: toolChoice,
         tools: tools,
         topP: topP,
-        think: think,
-        reasoningEffort: reasoningEffort,
+        thinkLevel: thinkLevel,
         extraBody: extraBody
     )
 
@@ -290,8 +286,7 @@ nonisolated func makeCodexResponsesRequestBody(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    think: Bool?,
-    reasoningEffort: OpenAIReasoningEffort?,
+    thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?
 ) throws -> [String: Any] {
     let preparedPrompt = try prepareCodexResponsesPrompt(messages)
@@ -330,10 +325,7 @@ nonisolated func makeCodexResponsesRequestBody(
     if let textControls = try encodeResponsesTextControls(responseFormat) {
         body["text"] = textControls
     }
-    if let reasoning = encodeResponsesReasoning(
-        think: think,
-        reasoningEffort: reasoningEffort
-    ) {
+    if let reasoning = encodeResponsesReasoning(thinkLevel: thinkLevel) {
         body["reasoning"] = reasoning
     }
 
@@ -526,14 +518,13 @@ private nonisolated func encodeResponsesToolChoice(
 }
 
 private nonisolated func encodeResponsesReasoning(
-    think: Bool?,
-    reasoningEffort: OpenAIReasoningEffort?
+    thinkLevel: ThinkLevel?
 ) -> [String: Any]? {
-    guard let reasoningEffort else {
+    guard let thinkLevel else {
         return nil
     }
     return [
-        "effort": reasoningEffort.rawValue,
+        "effort": thinkLevel.rawValue,
         "summary": "auto"
     ]
 }
