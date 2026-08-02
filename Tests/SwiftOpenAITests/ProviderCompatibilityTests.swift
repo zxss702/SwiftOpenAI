@@ -291,7 +291,7 @@ final class ProviderCompatibilityTests: XCTestCase {
         let xhighBody = try requestBody(from: xhighPrepared.urlRequest)
         let xhighThinking = try XCTUnwrap(xhighBody["thinking"] as? [String: Any])
         XCTAssertEqual(xhighThinking["type"] as? String, "enabled")
-        XCTAssertEqual(xhighBody["reasoning_effort"] as? String, "max")
+        XCTAssertEqual(xhighBody["reasoning_effort"] as? String, "xhigh")
 
         let lowPrepared = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .low),
@@ -302,7 +302,18 @@ final class ProviderCompatibilityTests: XCTestCase {
             )
         )
         let lowBody = try requestBody(from: lowPrepared.urlRequest)
-        XCTAssertEqual(lowBody["reasoning_effort"] as? String, "high")
+        XCTAssertEqual(lowBody["reasoning_effort"] as? String, "low")
+
+        let highPrepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .high),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let highBody = try requestBody(from: highPrepared.urlRequest)
+        XCTAssertEqual(highBody["reasoning_effort"] as? String, "high")
     }
 
     func testGenericOpenAICompatiblePassesThinkLevelEffort() async throws {

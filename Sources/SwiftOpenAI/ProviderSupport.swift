@@ -592,7 +592,7 @@ enum ProviderRequestEncoder {
                 "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
             ]
             if thinkLevel.enablesReasoning {
-                body["reasoning_effort"] = deepSeekCompatibleReasoningEffort(for: thinkLevel, family: family)
+                body["reasoning_effort"] = thinkLevel.rawValue
             }
 
         case .dashscope:
@@ -605,26 +605,6 @@ enum ProviderRequestEncoder {
 
         case .moonshot:
             break
-        }
-    }
-
-    /// DeepSeek 官方兼容：minimal/low/medium → high，xhigh → max；generic 透传原值
-    private static func deepSeekCompatibleReasoningEffort(
-        for thinkLevel: ThinkLevel,
-        family: ProviderFamily
-    ) -> String {
-        switch family {
-        case .deepseek:
-            switch thinkLevel {
-            case .none:
-                return ThinkLevel.none.rawValue
-            case .minimal, .low, .medium, .high:
-                return ThinkLevel.high.rawValue
-            case .xhigh:
-                return "max"
-            }
-        default:
-            return thinkLevel.rawValue
         }
     }
 
