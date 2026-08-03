@@ -254,14 +254,14 @@ final class CodexResponsesSupportTests: XCTestCase {
             ])
         ].joined(separator: "\n")
 
-        try await processCodexResponsesSSEText(
-            firstChunk,
+        try await processCodexResponsesSSEBytes(
+            Data(firstChunk.utf8),
             actorHelper: helper,
             state: &state,
             metadata: &metadata
         )
-        try await processCodexResponsesSSEText(
-            secondChunk,
+        try await processCodexResponsesSSEBytes(
+            Data(secondChunk.utf8),
             actorHelper: helper,
             state: &state,
             metadata: &metadata,

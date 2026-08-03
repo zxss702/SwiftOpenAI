@@ -217,13 +217,12 @@ nonisolated func createChatStreamEnvelopeStream(
                 )
                 let statusCode = Int(response.status.code)
 
-                var pendingText = ""
+                var sseBuffer = SSEByteBuffer()
                 for try await part in response.body {
                     try Task.checkCancellation()
-                    let text = String(buffer: part)
-                    if try processSSEText(
-                        text,
-                        pendingText: &pendingText,
+                    if try processSSEBytes(
+                        part.sseDataBytes,
+                        buffer: &sseBuffer,
                         statusCode: statusCode,
                         metadata: metadata,
                         family: preparedRequest.family,
@@ -234,9 +233,9 @@ nonisolated func createChatStreamEnvelopeStream(
                     }
                 }
 
-                if try processSSEText(
-                    "",
-                    pendingText: &pendingText,
+                if try processSSEBytes(
+                    Data(),
+                    buffer: &sseBuffer,
                     statusCode: statusCode,
                     metadata: metadata,
                     family: preparedRequest.family,
@@ -264,7 +263,8 @@ final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sen
     typealias Continuation = AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation
     
     let continuation: Continuation
-    var pendingText: String = ""
+    var sseBuffer = SSEByteBuffer()
+    var errorBody = Data()
     var statusCode: Int = 0
     var metadata: ChatResponseMetadata
     var family: ProviderFamily
@@ -288,16 +288,15 @@ final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sen
     
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard receivedResponse else { return }
-        let text = String(data: data, encoding: .utf8) ?? ""
         if !(200...299).contains(statusCode) {
-            pendingText += text
+            errorBody.append(data)
             return
         }
         
         do {
-            let finished = try processSSEText(
-                text,
-                pendingText: &pendingText,
+            let finished = try processSSEBytes(
+                data,
+                buffer: &sseBuffer,
                 statusCode: statusCode,
                 metadata: metadata,
                 family: family,
@@ -321,14 +320,15 @@ final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sen
         }
         
         if !(200...299).contains(statusCode) {
-            continuation.finish(throwing: OpenAIError.invalidResponse(pendingText, code: statusCode))
+            let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
+            continuation.finish(throwing: OpenAIError.invalidResponse(responseBody, code: statusCode))
             return
         }
         
         do {
-            let _ = try processSSEText(
-                "",
-                pendingText: &pendingText,
+            let _ = try processSSEBytes(
+                Data(),
+                buffer: &sseBuffer,
                 statusCode: statusCode,
                 metadata: metadata,
                 family: family,
@@ -410,9 +410,9 @@ nonisolated func createChatStreamEnvelopeStream(
 #endif
 
 @discardableResult
-nonisolated private func processSSEText(
-    _ text: String,
-    pendingText: inout String,
+nonisolated private func processSSEBytes(
+    _ bytes: Data,
+    buffer: inout SSEByteBuffer,
     statusCode: Int,
     metadata: ChatResponseMetadata,
     family: ProviderFamily,
@@ -420,29 +420,9 @@ nonisolated private func processSSEText(
     continuation: AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation,
     finalize: Bool = false
 ) throws -> Bool {
-    pendingText += text
+    buffer.append(bytes)
 
-    while let newlineIndex = pendingText.firstIndex(of: "\n") {
-        var line = String(pendingText[..<newlineIndex])
-        pendingText.removeSubrange(...newlineIndex)
-        if line.hasSuffix("\r") {
-            line.removeLast()
-        }
-        if try processSSELine(
-            line,
-            statusCode: statusCode,
-            metadata: metadata,
-            family: family,
-            state: &state,
-            continuation: continuation
-        ) {
-            return true
-        }
-    }
-
-    if finalize, !pendingText.isEmpty {
-        let line = pendingText
-        pendingText.removeAll(keepingCapacity: false)
+    for line in buffer.drainLines(finalize: finalize) {
         if try processSSELine(
             line,
             statusCode: statusCode,

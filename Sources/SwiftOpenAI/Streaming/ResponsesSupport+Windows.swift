@@ -8,7 +8,7 @@ import FoundationNetworking
 private let defaultCodexResponsesInstructions = "You are a helpful assistant."
 
 struct CodexResponsesStreamState {
-    var pendingText: String = ""
+    var sseBuffer = SSEByteBuffer()
     var usage: ChatStreamResult.Choice.UsageInfo?
     var responseID: String?
     var resolvedModel: String?
@@ -69,11 +69,10 @@ private final class CodexResponsesStreamDelegate: NSObject, URLSessionDataDelega
             return
         }
 
-        let text = String(data: data, encoding: .utf8) ?? ""
         Task {
             do {
-                try await processCodexResponsesSSEText(
-                    text,
+                try await processCodexResponsesSSEBytes(
+                    data,
                     actorHelper: actorHelper,
                     state: &state,
                     metadata: &metadata
@@ -107,8 +106,8 @@ private final class CodexResponsesStreamDelegate: NSObject, URLSessionDataDelega
 
         Task {
             do {
-                try await processCodexResponsesSSEText(
-                    "",
+                try await processCodexResponsesSSEBytes(
+                    Data(),
                     actorHelper: actorHelper,
                     state: &state,
                     metadata: &metadata,
@@ -573,32 +572,16 @@ private nonisolated func encodeStop(_ stop: ChatQuery.Stop) throws -> Any {
     }
 }
 
-nonisolated func processCodexResponsesSSEText(
-    _ text: String,
+nonisolated func processCodexResponsesSSEBytes(
+    _ bytes: Data,
     actorHelper: OpenAISendMessageValueHelper,
     state: inout CodexResponsesStreamState,
     metadata: inout ChatResponseMetadata,
     finalize: Bool = false
 ) async throws {
-    state.pendingText += text
+    state.sseBuffer.append(bytes)
 
-    while let newlineIndex = state.pendingText.firstIndex(of: "\n") {
-        var line = String(state.pendingText[..<newlineIndex])
-        state.pendingText.removeSubrange(...newlineIndex)
-        if line.hasSuffix("\r") {
-            line.removeLast()
-        }
-        try await processCodexResponsesSSELine(
-            line,
-            actorHelper: actorHelper,
-            state: &state,
-            metadata: &metadata
-        )
-    }
-
-    if finalize, !state.pendingText.isEmpty {
-        let line = state.pendingText
-        state.pendingText.removeAll(keepingCapacity: false)
+    for line in state.sseBuffer.drainLines(finalize: finalize) {
         try await processCodexResponsesSSELine(
             line,
             actorHelper: actorHelper,
