@@ -431,6 +431,21 @@ extension ChatQuery.ChatCompletionMessageParam {
         )
     }
     
+    // MARK: - Reminder Messages
+    
+    /// 创建提醒消息（DeepSeek `latest_reminder`；其它厂商按能力回退）
+    public static nonisolated func reminder(
+        _ text: String,
+        name: String? = nil
+    ) -> Self {
+        return .reminder(
+            ReminderMessageParam(
+                content: .textContent(text),
+                name: name
+            )
+        )
+    }
+    
     // MARK: - Assistant Messages
     
     /// 创建助手消息
@@ -469,6 +484,11 @@ extension ChatQuery.ChatCompletionMessageParam {
     /// 从字符串快速创建系统消息
     public static nonisolated func systemMessage(_ text: String) -> Self {
         return .system(text)
+    }
+    
+    /// 从字符串快速创建提醒消息
+    public static nonisolated func reminderMessage(_ text: String) -> Self {
+        return .reminder(text)
     }
     
     /// 从字符串快速创建助手消息
@@ -540,6 +560,11 @@ extension ChatQuery.ChatCompletionMessageParam {
                 return text
             }
             return nil
+        case .reminder(let reminderParam):
+            if case .textContent(let text) = reminderParam.content {
+                return text
+            }
+            return nil
         case .user(let userParam):
             if case .string(let text) = userParam.content {
                 return text
@@ -578,6 +603,8 @@ extension ChatQuery.ChatCompletionMessageParam {
         switch self {
         case .system(let systemParam):
             return systemParam.name
+        case .reminder(let reminderParam):
+            return reminderParam.name
         case .user(let userParam):
             return userParam.name
         case .assistant(let assistantParam):
@@ -649,6 +676,11 @@ extension Array where Element == ChatQuery.ChatCompletionMessageParam {
     /// 添加系统消息
     public mutating func addSystemMessage(_ text: String, name: String? = nil) {
         self.append(.system(text, name: name))
+    }
+    
+    /// 添加提醒消息
+    public mutating func addReminderMessage(_ text: String, name: String? = nil) {
+        self.append(.reminder(text, name: name))
     }
     
     /// 添加助手消息到数组
