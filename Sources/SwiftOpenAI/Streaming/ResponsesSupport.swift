@@ -266,6 +266,12 @@ private nonisolated func prepareCodexResponsesPrompt(
             if !trimmed.isEmpty {
                 instructionsParts.append(trimmed)
             }
+        case .reminder(let reminderMessage):
+            guard case .textContent(let text) = reminderMessage.content else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                instructionsParts.append(trimmed)
+            }
         default:
             inputMessages.append(message)
         }
@@ -299,6 +305,16 @@ nonisolated func encodeResponsesInputItems(
         switch message {
         case .system(let systemMessage):
             guard case .textContent(let text) = systemMessage.content, !text.isEmpty else {
+                return []
+            }
+            return [[
+                "type": "message",
+                "role": "system",
+                "content": [["type": "input_text", "text": text]]
+            ]]
+
+        case .reminder(let reminderMessage):
+            guard case .textContent(let text) = reminderMessage.content, !text.isEmpty else {
                 return []
             }
             return [[
