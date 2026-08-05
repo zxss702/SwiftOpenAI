@@ -56,6 +56,18 @@ enum ProviderFamily: String, Sendable {
             return true
         }
     }
+
+    /// 该 Provider 是否支持 function 级 strict（工具参数严格遵循 JSON Schema）
+    ///
+    /// 不支持的 Provider 即使工具声明了 strict 也会在发送时剥除该字段。
+    var supportsToolStrict: Bool {
+        switch self {
+        case .openai, .moonshot, .deepseek:
+            return true
+        case .zhipuGLM, .minimax, .volcengineArk, .dashscope, .genericOpenAICompatible:
+            return false
+        }
+    }
 }
 
 enum AssistantReasoningEncoding: Sendable {
@@ -214,7 +226,13 @@ enum ProviderRequestEncoder {
         )
 
         try ProviderCompatibilityValidator.validate(canonicalRequest, family: family)
-        let normalizedBasePath = normalizedBasePath(from: configuration.basePath)
+        var normalizedBasePath = normalizedBasePath(from: configuration.basePath)
+        // DeepSeek strict 工具需要 base_url 为 /beta；仅在用户未显式配置非 /v1 路径时自动切换
+        if family == .deepseek,
+           normalizedBasePath == "/v1/chat/completions",
+           canonicalRequest.tools?.contains(where: { $0.function.strict == true }) == true {
+            normalizedBasePath = "/beta/chat/completions"
+        }
         let requestURL = try makeRequestURL(configuration: configuration, normalizedBasePath: normalizedBasePath)
 
         var request = URLRequest(url: requestURL)
@@ -294,7 +312,7 @@ enum ProviderRequestEncoder {
             body["tool_choice"] = try encodeToolChoice(toolChoice)
         }
         if let tools = request.tools {
-            body["tools"] = try tools.map { try jsonValue($0) }
+            body["tools"] = try encodeTools(tools, family: family)
         }
         if let topP = request.topP {
             body["top_p"] = topP
@@ -674,6 +692,24 @@ enum ProviderRequestEncoder {
             break
         case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
             break
+        }
+    }
+
+    private static func encodeTools(
+        _ tools: [ChatQuery.ChatCompletionToolParam],
+        family: ProviderFamily
+    ) throws -> [Any] {
+        let encoded: [Any] = try tools.map { try jsonValue($0) }
+        guard !family.supportsToolStrict else { return encoded }
+        // 不支持 strict 的 Provider：剥除 function.strict，即使工具声明了也不发送
+        return encoded.map { tool in
+            guard var dict = tool as? [String: Any],
+                  var function = dict["function"] as? [String: Any] else {
+                return tool
+            }
+            function.removeValue(forKey: "strict")
+            dict["function"] = function
+            return dict
         }
     }
 
