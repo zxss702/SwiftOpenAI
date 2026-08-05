@@ -242,7 +242,7 @@ final class ExtendedFeaturesTests: XCTestCase {
         XCTAssertEqual(chatTool.type, "function")
         XCTAssertEqual(chatTool.function.name, "advanced_calculator")
         XCTAssertEqual(chatTool.function.description, "执行高级数学计算，支持多种操作和配置")
-        XCTAssertEqual(chatTool.function.strict, nil)
+        XCTAssertEqual(chatTool.function.strict, true)
         XCTAssertNotNil(chatTool.function.parameters)
         
         // 验证参数是有效的字典

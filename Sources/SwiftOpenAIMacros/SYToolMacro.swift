@@ -104,7 +104,8 @@ public struct SYToolMacro: ExtensionMacro {
                     type: "function",
                     function: SwiftOpenAI.ChatQuery.ChatCompletionToolParam.Function(
                         name: self.name,
-                        description: self.description, 
+                        description: self.description,
+                        strict: true,
                         parameters: paramsDict
                     )
                 )
