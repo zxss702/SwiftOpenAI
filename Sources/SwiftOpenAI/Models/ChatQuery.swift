@@ -309,11 +309,13 @@ public struct ChatQuery: Codable, Sendable {
         public struct Function: Codable, Sendable {
             public let name: String
             public let description: String?
+            public let strict: Bool?
             public let parameters: ParametersContainer?  // 使用包装器类型
-            
-            public init(name: String, description: String? = nil, parameters: [String: AnyCodableValue]? = nil) {
+
+            public init(name: String, description: String? = nil, strict: Bool? = nil, parameters: [String: AnyCodableValue]? = nil) {
                 self.name = name
                 self.description = description
+                self.strict = strict
                 self.parameters = parameters.map { ParametersContainer($0) }
             }
             

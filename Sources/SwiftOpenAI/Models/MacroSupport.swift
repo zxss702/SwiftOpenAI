@@ -32,13 +32,15 @@ extension ChatQuery.ChatCompletionToolParam {
         }
         
         let description = functionDict["description"] as? String
+        let strict = functionDict["strict"] as? Bool
         let parameters = (functionDict["parameters"] as? [String: Any])?.mapValues { AnyCodableValue.from($0) }
-        
+
         return ChatQuery.ChatCompletionToolParam(
             type: type,
             function: ChatQuery.ChatCompletionToolParam.Function(
                 name: name,
                 description: description,
+                strict: strict,
                 parameters: parameters
             )
         )
