@@ -68,6 +68,24 @@ enum ProviderFamily: String, Sendable {
             return false
         }
     }
+
+    /// `.reminder` 出站时映射到的 wire role
+    var reminderWireRole: ReminderWireRole {
+        switch self {
+        case .deepseek:
+            return .latestReminder
+        case .moonshot, .openai:
+            return .system
+        case .dashscope, .volcengineArk, .zhipuGLM, .minimax, .genericOpenAICompatible:
+            return .user
+        }
+    }
+}
+
+enum ReminderWireRole: Sendable {
+    case latestReminder
+    case system
+    case user
 }
 
 enum AssistantReasoningEncoding: Sendable {
@@ -420,6 +438,25 @@ enum ProviderRequestEncoder {
                 toolMessage.content,
                 supportsMultimedia: family.supportsMultimedia
             )
+            return encoded
+
+        case .reminder(let reminderMessage):
+            let wireRole: String
+            switch family.reminderWireRole {
+            case .latestReminder:
+                wireRole = "latest_reminder"
+            case .system:
+                wireRole = "system"
+            case .user:
+                wireRole = "user"
+            }
+            var encoded: [String: Any] = ["role": wireRole]
+            if case .textContent(let text) = reminderMessage.content {
+                encoded["content"] = text
+            }
+            if let name = reminderMessage.name {
+                encoded["name"] = name
+            }
             return encoded
         }
     }
