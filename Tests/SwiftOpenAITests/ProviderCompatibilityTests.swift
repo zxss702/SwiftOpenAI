@@ -774,6 +774,113 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertTrue(parts.contains { ($0["type"] as? String) == "text" })
     }
 
+    func testReminderEncodesAsLatestReminderForDeepSeek() async throws {
+        let query = ChatQuery(
+            messages: [
+                .system("You are helpful."),
+                .user("What day is it?"),
+                .reminder("Today is 2026-08-05. Locale: zh-CN.")
+            ],
+            model: "deepseek-v4-flash"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let reminder = try XCTUnwrap(messages.last)
+        XCTAssertEqual(reminder["role"] as? String, "latest_reminder")
+        XCTAssertEqual(reminder["content"] as? String, "Today is 2026-08-05. Locale: zh-CN.")
+    }
+
+    func testReminderFallsBackToSystemForOpenAIAndMoonshot() async throws {
+        let query = ChatQuery(
+            messages: [
+                .user("hi"),
+                .reminder("Today is 2026-08-05.")
+            ],
+            model: "gpt-4o"
+        )
+
+        let openaiPrepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.openai.com",
+                basePath: "/v1"
+            )
+        )
+        let openaiBody = try requestBody(from: openaiPrepared.urlRequest)
+        let openaiMessages = try XCTUnwrap(openaiBody["messages"] as? [[String: Any]])
+        XCTAssertEqual(openaiMessages.last?["role"] as? String, "system")
+        XCTAssertEqual(openaiMessages.last?["content"] as? String, "Today is 2026-08-05.")
+
+        let moonshotPrepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hi"), .reminder("Today is 2026-08-05.")],
+                model: "kimi-k2.5"
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.moonshot.cn",
+                basePath: "/v1"
+            )
+        )
+        let moonshotBody = try requestBody(from: moonshotPrepared.urlRequest)
+        let moonshotMessages = try XCTUnwrap(moonshotBody["messages"] as? [[String: Any]])
+        XCTAssertEqual(moonshotMessages.last?["role"] as? String, "system")
+        XCTAssertEqual(moonshotMessages.last?["content"] as? String, "Today is 2026-08-05.")
+    }
+
+    func testReminderFallsBackToUserWhenMidSystemUnsupported() async throws {
+        let hostsAndModels: [(host: String, model: String)] = [
+            ("dashscope.aliyuncs.com", "qwen-plus"),
+            ("open.bigmodel.cn", "glm-4.5"),
+            ("api.minimaxi.com", "MiniMax-M2.7"),
+            ("ark.cn-beijing.volces.com", "doubao-pro"),
+            ("api.siliconflow.cn", "Qwen/Qwen2.5-7B-Instruct")
+        ]
+
+        for entry in hostsAndModels {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("hi"), .reminder("Today is 2026-08-05.")],
+                    model: entry.model
+                ),
+                configuration: OpenAIConfiguration(
+                    token: "test-token",
+                    host: entry.host,
+                    basePath: "/v1"
+                )
+            )
+            let body = try requestBody(from: prepared.urlRequest)
+            let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+            XCTAssertEqual(
+                messages.last?["role"] as? String,
+                "user",
+                "host \(entry.host) should fall back reminder to user"
+            )
+            XCTAssertEqual(messages.last?["content"] as? String, "Today is 2026-08-05.")
+        }
+    }
+
+    func testReminderCodableRoundTripUsesLatestReminderRole() throws {
+        let message = ChatQuery.ChatCompletionMessageParam.reminder("Locale: en-US")
+        let data = try JSONEncoder().encode(message)
+        let decoded = try JSONDecoder().decode(ChatQuery.ChatCompletionMessageParam.self, from: data)
+        XCTAssertEqual(decoded.role, .latestReminder)
+        XCTAssertEqual(decoded.textContent, "Locale: en-US")
+
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["role"] as? String, "latest_reminder")
+        XCTAssertEqual(json["content"] as? String, "Locale: en-US")
+    }
+
     private func requestBody(from request: URLRequest) throws -> [String: Any] {
         let body = try XCTUnwrap(request.httpBody)
         let jsonObject = try JSONSerialization.jsonObject(with: body, options: [])
