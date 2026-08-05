@@ -175,12 +175,13 @@ public struct ChatQuery: Codable, Sendable {
     
     /// 聊天消息参数
     ///
-    /// 支持系统、用户、助手和工具四种消息类型。
+    /// 支持系统、用户、助手、工具和提醒五种消息类型。
     public enum ChatCompletionMessageParam: Codable, Sendable {
         case system(SystemMessageParam)
         case user(UserMessageParam)
         case assistant(AssistantMessageParam)
         case tool(ToolMessageParam)
+        case reminder(ReminderMessageParam)
         
         public init?(role: Role, content: String?, name: String? = nil, toolCalls: [AssistantMessageParam.ToolCallParam]? = nil, toolCallId: String? = nil, reasoningContent: String? = nil) {
             switch role {
@@ -195,6 +196,9 @@ public struct ChatQuery: Codable, Sendable {
             case .tool:
                 guard let content = content, let toolCallId = toolCallId else { return nil }
                 self = .tool(ToolMessageParam(content: .textContent(content), toolCallId: toolCallId))
+            case .latestReminder:
+                guard let content = content else { return nil }
+                self = .reminder(ReminderMessageParam(content: .textContent(content), name: name))
             }
         }
         
@@ -204,11 +208,13 @@ public struct ChatQuery: Codable, Sendable {
             case .user: return .user
             case .assistant: return .assistant
             case .tool: return .tool
+            case .reminder: return .latestReminder
             }
         }
         
         public enum Role: String, Codable {
             case system, user, assistant, tool
+            case latestReminder = "latest_reminder"
         }
         
         // MARK: - Codable Implementation
@@ -259,6 +265,14 @@ public struct ChatQuery: Codable, Sendable {
                 } else {
                     self = .tool(ToolMessageParam(content: .textContent(""), toolCallId: toolCallId))
                 }
+                
+            case .latestReminder:
+                let content = try container.decodeIfPresent(String.self, forKey: .content)
+                let name = try container.decodeIfPresent(String.self, forKey: .name)
+                self = .reminder(ReminderMessageParam(
+                    content: .textContent(content ?? ""),
+                    name: name
+                ))
             }
         }
         
@@ -289,6 +303,13 @@ public struct ChatQuery: Codable, Sendable {
                 try container.encode(Role.tool, forKey: .role)
                 try container.encode(toolParam.content, forKey: .content)
                 try container.encode(toolParam.toolCallId, forKey: .toolCallId)
+                
+            case .reminder(let reminderParam):
+                try container.encode(Role.latestReminder, forKey: .role)
+                if case .textContent(let text) = reminderParam.content {
+                    try container.encode(text, forKey: .content)
+                }
+                try container.encodeIfPresent(reminderParam.name, forKey: .name)
             }
         }
     }

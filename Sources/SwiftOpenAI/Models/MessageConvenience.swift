@@ -267,6 +267,39 @@ public struct SystemMessageParam: Codable, Sendable {
     }
 }
 
+// MARK: - Reminder Message
+
+/// 提醒消息参数
+///
+/// 对应 DeepSeek V4 编码中的 `latest_reminder`，用于注入日期、locale 等易变上下文。
+/// 发送前由 Provider 编码器按厂商能力映射为 `latest_reminder` / `system` / `user`。
+public struct ReminderMessageParam: Codable, Sendable {
+    public let content: TextContent
+    public let name: String?
+    
+    public init(content: TextContent, name: String? = nil) {
+        self.content = content
+        self.name = name
+    }
+    
+    public enum TextContent: Codable, Sendable {
+        case textContent(String)
+        
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            self = .textContent(try container.decode(String.self))
+        }
+        
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .textContent(let text):
+                try container.encode(text)
+            }
+        }
+    }
+}
+
 // MARK: - Assistant Message
 
 /// 助手消息参数
