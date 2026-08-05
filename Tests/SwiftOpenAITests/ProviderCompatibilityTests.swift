@@ -316,6 +316,177 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(highBody["reasoning_effort"] as? String, "high")
     }
 
+    // MARK: - strict tool call
+
+    private func makeWeatherTool(strict: Bool? = true) -> ChatQuery.ChatCompletionToolParam {
+        ChatQuery.ChatCompletionToolParam(
+            type: "function",
+            function: ChatQuery.ChatCompletionToolParam.Function(
+                name: "get_weather",
+                description: "查询天气",
+                strict: strict,
+                parameters: [
+                    "type": .string("object"),
+                    "properties": .object([
+                        "city": .object([
+                            "type": .string("string")
+                        ])
+                    ]),
+                    "required": .array([.string("city")]),
+                    "additionalProperties": .bool(false)
+                ]
+            )
+        )
+    }
+
+    func testFunctionStrictNotSentWhenNotSpecified() async throws {
+        // 不传 strict，默认 nil，不发送 strict 字段
+        let tool = ChatQuery.ChatCompletionToolParam(
+            type: "function",
+            function: ChatQuery.ChatCompletionToolParam.Function(
+                name: "get_weather",
+                description: "查询天气"
+            )
+        )
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "gpt-5.4",
+                tools: [tool]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.openai.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let function = try XCTUnwrap(tools[0]["function"] as? [String: Any])
+        XCTAssertNil(function["strict"])
+    }
+
+    func testStrictFalsePassthroughOnMoonshot() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "kimi-k2",
+                tools: [makeWeatherTool(strict: false)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.moonshot.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let function = try XCTUnwrap(tools[0]["function"] as? [String: Any])
+        XCTAssertEqual(function["strict"] as? Bool, false)
+    }
+
+    func testStrictStrippedForUnsupportedProviders() async throws {
+        for host in ["open.bigmodel.cn", "api.minimaxi.com", "api.siliconflow.cn"] {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("hello")],
+                    model: "test-model",
+                    tools: [makeWeatherTool(strict: true)]
+                ),
+                configuration: OpenAIConfiguration(
+                    token: "test-token",
+                    host: host,
+                    basePath: "/v1"
+                )
+            )
+            let body = try requestBody(from: prepared.urlRequest)
+            let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+            let function = try XCTUnwrap(tools[0]["function"] as? [String: Any])
+            XCTAssertNil(function["strict"], "provider \(host) 不支持 strict，应剥除")
+        }
+    }
+
+    func testDeepSeekAutoBetaPath() async throws {
+        // 未配置 basePath（走默认 /v1）
+        let defaultPrepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [makeWeatherTool(strict: true)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com"
+            )
+        )
+        XCTAssertEqual(defaultPrepared.urlRequest.url?.path, "/beta/chat/completions")
+
+        // 显式 /v1 同样切换
+        let v1Prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [makeWeatherTool(strict: true)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        XCTAssertEqual(v1Prepared.urlRequest.url?.path, "/beta/chat/completions")
+
+        // 用户自定义非 /v1 路径不覆盖
+        let customPrepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [makeWeatherTool(strict: true)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/custom"
+            )
+        )
+        XCTAssertEqual(customPrepared.urlRequest.url?.path, "/custom/chat/completions")
+    }
+
+    func testDeepSeekNoStrictKeepsV1() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [makeWeatherTool(strict: false)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        XCTAssertEqual(prepared.urlRequest.url?.path, "/v1/chat/completions")
+    }
+
+    func testDeepSeekStrictToolEncodedInBody() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [makeWeatherTool(strict: true)]
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let function = try XCTUnwrap(tools[0]["function"] as? [String: Any])
+        XCTAssertEqual(function["strict"] as? Bool, true)
+    }
+
     func testGenericOpenAICompatiblePassesThinkLevelEffort() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "custom-model", thinkLevel: .xhigh),
