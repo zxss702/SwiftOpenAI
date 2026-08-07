@@ -881,6 +881,174 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(json["content"] as? String, "Locale: en-US")
     }
 
+    // MARK: - ResponseFormat Downgrade
+
+    private func sampleJsonSchemaFormat() -> ChatQuery.ResponseFormat {
+        ChatQuery.ResponseFormat(
+            type: "json_schema",
+            jsonSchema: .init(
+                name: "person",
+                description: "A person",
+                strict: true,
+                schema: [
+                    "type": .string("object"),
+                    "properties": .object([
+                        "name": .object(["type": .string("string")])
+                    ]),
+                    "required": .array([.string("name")]),
+                    "additionalProperties": .bool(false)
+                ]
+            )
+        )
+    }
+
+    func testResponseFormatCapabilityMatrix() {
+        XCTAssertEqual(ProviderFamily.openai.responseFormatCapability, .jsonSchema)
+        XCTAssertEqual(ProviderFamily.moonshot.responseFormatCapability, .jsonSchema)
+        XCTAssertEqual(ProviderFamily.volcengineArk.responseFormatCapability, .jsonSchema)
+        XCTAssertEqual(ProviderFamily.dashscope.responseFormatCapability, .jsonSchema)
+        XCTAssertEqual(ProviderFamily.deepseek.responseFormatCapability, .jsonObject)
+        XCTAssertEqual(ProviderFamily.zhipuGLM.responseFormatCapability, .jsonObject)
+        XCTAssertEqual(ProviderFamily.genericOpenAICompatible.responseFormatCapability, .jsonObject)
+        XCTAssertEqual(ProviderFamily.minimax.responseFormatCapability, .none)
+    }
+
+    func testDeepSeekDowngradesJsonSchemaToJsonObject() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-chat",
+                responseFormat: sampleJsonSchemaFormat()
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_object")
+        XCTAssertNil(responseFormat["json_schema"])
+    }
+
+    func testZhipuDowngradesJsonSchemaToJsonObject() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "glm-4.5",
+                responseFormat: sampleJsonSchemaFormat()
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "open.bigmodel.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_object")
+        XCTAssertNil(responseFormat["json_schema"])
+    }
+
+    func testMiniMaxStripsResponseFormat() async throws {
+        for format in [sampleJsonSchemaFormat(), ChatQuery.ResponseFormat.jsonObject] {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("hello")],
+                    model: "MiniMax-M2.7",
+                    responseFormat: format
+                ),
+                configuration: OpenAIConfiguration(
+                    token: "test-token",
+                    host: "api.minimaxi.com",
+                    basePath: "/v1"
+                )
+            )
+            let body = try requestBody(from: prepared.urlRequest)
+            XCTAssertNil(body["response_format"], "MiniMax 应剥离 response_format")
+        }
+    }
+
+    func testOpenAIKeepsJsonSchema() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "gpt-4o",
+                responseFormat: sampleJsonSchemaFormat()
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.openai.com",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_schema")
+        let jsonSchema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+        XCTAssertEqual(jsonSchema["name"] as? String, "person")
+        XCTAssertEqual(jsonSchema["strict"] as? Bool, true)
+    }
+
+    func testMoonshotKeepsJsonSchema() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "kimi-k2",
+                responseFormat: sampleJsonSchemaFormat()
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.moonshot.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_schema")
+        let jsonSchema = try XCTUnwrap(responseFormat["json_schema"] as? [String: Any])
+        XCTAssertEqual(jsonSchema["name"] as? String, "person")
+    }
+
+    func testMoonshotThinkingModelStripsResponseFormat() async throws {
+        for format in [sampleJsonSchemaFormat(), ChatQuery.ResponseFormat.jsonObject] {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("hello")],
+                    model: "kimi-k2-thinking",
+                    responseFormat: format
+                ),
+                configuration: OpenAIConfiguration(
+                    token: "test-token",
+                    host: "api.moonshot.cn",
+                    basePath: "/v1"
+                )
+            )
+            let body = try requestBody(from: prepared.urlRequest)
+            XCTAssertNil(body["response_format"], "Moonshot thinking 模型应剥离 response_format 而非抛错")
+        }
+    }
+
+    func testGenericCompatibleDowngradesJsonSchemaToJsonObject() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "Qwen/Qwen3-8B",
+                responseFormat: sampleJsonSchemaFormat()
+            ),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.siliconflow.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let responseFormat = try XCTUnwrap(body["response_format"] as? [String: Any])
+        XCTAssertEqual(responseFormat["type"] as? String, "json_object")
+        XCTAssertNil(responseFormat["json_schema"])
+    }
+
     private func requestBody(from request: URLRequest) throws -> [String: Any] {
         let body = try XCTUnwrap(request.httpBody)
         let jsonObject = try JSONSerialization.jsonObject(with: body, options: [])
