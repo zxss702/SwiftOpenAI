@@ -80,6 +80,28 @@ enum ProviderFamily: String, Sendable {
             return .user
         }
     }
+
+    /// 该 Provider 对 `response_format` 的最高支持级别
+    ///
+    /// 发送前会把请求的格式自动降级到不超过该级别：
+    /// `json_schema` → `json_object` → 去掉 `response_format`。
+    var responseFormatCapability: ResponseFormatCapability {
+        switch self {
+        case .openai, .moonshot, .volcengineArk, .dashscope:
+            return .jsonSchema
+        case .deepseek, .zhipuGLM, .genericOpenAICompatible:
+            return .jsonObject
+        case .minimax:
+            return .none
+        }
+    }
+}
+
+/// Chat Completions `response_format` 能力层级（声明顺序即 Comparable 顺序）
+enum ResponseFormatCapability: Comparable, Sendable {
+    case none
+    case jsonObject
+    case jsonSchema
 }
 
 enum ReminderWireRole: Sendable {
@@ -209,9 +231,7 @@ enum ProviderCompatibilityValidator {
             if isThinkingModel, let tools = request.tools, !tools.isEmpty {
                 throw OpenAIError.unsupportedParameterCombination("Moonshot 思考模型暂不支持 tools")
             }
-            if isThinkingModel, let responseFormat = request.responseFormat, responseFormat.type == "json_object" {
-                throw OpenAIError.unsupportedParameterCombination("Moonshot 思考模型暂不支持 JSON Mode")
-            }
+            // Moonshot thinking 模型的 response_format 由 normalizeResponseFormat 剥离，不再硬抛错
         case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
             break
         }
@@ -231,7 +251,11 @@ enum ProviderRequestEncoder {
             parallelToolCalls: query.parallelToolCalls,
             prediction: query.prediction,
             presencePenalty: query.presencePenalty,
-            responseFormat: query.responseFormat,
+            responseFormat: normalizeResponseFormat(
+                query.responseFormat,
+                family: family,
+                model: query.model
+            ),
             stop: query.stop,
             temperature: query.temperature,
             toolChoice: query.toolChoice,
@@ -580,6 +604,41 @@ enum ProviderRequestEncoder {
                     ] as [String: Any]
                 }
             }
+        }
+    }
+
+    /// 按厂家能力将 `response_format` 降级：`json_schema` → `json_object` → 去掉。
+    static func normalizeResponseFormat(
+        _ format: ChatQuery.ResponseFormat?,
+        family: ProviderFamily,
+        model: String
+    ) -> ChatQuery.ResponseFormat? {
+        guard let format else { return nil }
+
+        var capability = family.responseFormatCapability
+        if family == .moonshot, model.lowercased().contains("thinking") {
+            capability = .none
+        }
+
+        switch format.type {
+        case "json_schema":
+            switch capability {
+            case .jsonSchema:
+                return format
+            case .jsonObject:
+                return .jsonObject
+            case .none:
+                return nil
+            }
+        case "json_object":
+            switch capability {
+            case .jsonSchema, .jsonObject:
+                return format
+            case .none:
+                return nil
+            }
+        default:
+            return format
         }
     }
 
