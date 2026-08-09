@@ -502,6 +502,21 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertEqual(body["reasoning_effort"] as? String, "xhigh")
     }
 
+    func testGenericOpenAICompatiblePassesThinkLevelMax() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(messages: [.user("hello")], model: "custom-model", thinkLevel: .max),
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.siliconflow.cn",
+                basePath: "/v1"
+            )
+        )
+        let body = try requestBody(from: prepared.urlRequest)
+        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
+        XCTAssertEqual(thinking["type"] as? String, "enabled")
+        XCTAssertEqual(body["reasoning_effort"] as? String, "max")
+    }
+
     func testOpenAIUsesTopLevelReasoningEffort() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "gpt-5.4", thinkLevel: .high),
