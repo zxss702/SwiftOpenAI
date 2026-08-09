@@ -394,7 +394,7 @@ if let toolCalls = message.toolCalls {
 
 ```swift
 public enum ThinkLevel: String, Codable {
-    case none, minimal, low, medium, high, xhigh
+    case none, minimal, low, medium, high, xhigh, max
 }
 ```
 

@@ -21,6 +21,7 @@ public enum ThinkLevel: String, Codable, Sendable, Hashable, CaseIterable {
     case medium
     case high
     case xhigh
+    case max
 
     public var enablesReasoning: Bool {
         self != .none
