@@ -47,13 +47,18 @@ enum ProviderFamily: String, Sendable {
         }
     }
 
-    /// 该 Provider 是否支持图像/视频等多模态输入
-    var supportsMultimedia: Bool {
+    /// 按模型返回图像/视频多模态能力（DeepSeek 视觉模型可单独放开图片）
+    func multimediaCapability(for model: String) -> MultimediaCapability {
         switch self {
-        case .minimax, .deepseek:
-            return false
+        case .minimax:
+            return MultimediaCapability(supportsImage: false, supportsVideo: false)
+        case .deepseek:
+            if model.lowercased() == "deepseek-v4-flash-vision-exp" {
+                return MultimediaCapability(supportsImage: true, supportsVideo: false)
+            }
+            return MultimediaCapability(supportsImage: false, supportsVideo: false)
         case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
-            return true
+            return MultimediaCapability(supportsImage: true, supportsVideo: true)
         }
     }
 
@@ -95,6 +100,12 @@ enum ProviderFamily: String, Sendable {
             return .none
         }
     }
+}
+
+/// 出站消息对图像 / 视频的支持能力
+struct MultimediaCapability: Sendable {
+    var supportsImage: Bool
+    var supportsVideo: Bool
 }
 
 /// Chat Completions `response_format` 能力层级（声明顺序即 Comparable 顺序）
@@ -314,7 +325,7 @@ enum ProviderRequestEncoder {
 
     private static func buildRequestBody(from request: CanonicalChatRequest, family: ProviderFamily) throws -> [String: Any] {
         var body: [String: Any] = [
-            "messages": try encodeMessages(request.messages, family: family),
+            "messages": try encodeMessages(request.messages, family: family, model: request.model),
             "model": request.model
         ]
 
@@ -381,9 +392,11 @@ enum ProviderRequestEncoder {
 
     private static func encodeMessages(
         _ messages: [ChatQuery.ChatCompletionMessageParam],
-        family: ProviderFamily
+        family: ProviderFamily,
+        model: String
     ) throws -> [[String: Any]] {
-        try messages.map { try encodeMessage($0, family: family) }
+        let capability = family.multimediaCapability(for: model)
+        return try messages.map { try encodeMessage($0, family: family, capability: capability) }
     }
 
     /// 不支持多媒体时：保留文本并追加提示，避免整条删除导致 tool_call 不配对
@@ -402,9 +415,60 @@ enum ProviderRequestEncoder {
         return segments.joined(separator: "\n")
     }
 
+    private static func encodeImageURLPart(url: String, detail: String) -> [String: Any] {
+        [
+            "type": "image_url",
+            "image_url": [
+                "url": url,
+                "detail": detail
+            ] as [String: Any]
+        ]
+    }
+
+    private static func encodeVideoURLPart(url: String, fps: Double?) -> [String: Any] {
+        var videoDict: [String: Any] = ["url": url]
+        if let fps {
+            videoDict["fps"] = fps
+        }
+        return [
+            "type": "video_url",
+            "video_url": videoDict
+        ]
+    }
+
+    /// 按能力过滤图/视频：全不支持则降为纯文本；部分支持则保留可用 parts 并追加提示
+    private static func finalizeMultimediaContent(
+        encodedParts: [[String: Any]],
+        texts: [String],
+        hasUnsupportedImage: Bool,
+        hasUnsupportedVideo: Bool,
+        keptSupportedMedia: Bool
+    ) -> Any {
+        let hasUnsupported = hasUnsupportedImage || hasUnsupportedVideo
+        if !hasUnsupported {
+            return encodedParts
+        }
+        if !keptSupportedMedia {
+            return plaintextReplacingUnsupportedMultimedia(
+                texts: texts,
+                hasImage: hasUnsupportedImage,
+                hasVideo: hasUnsupportedVideo
+            )
+        }
+        var parts = encodedParts
+        if hasUnsupportedImage {
+            parts.append(["type": "text", "text": "image 不支持"])
+        }
+        if hasUnsupportedVideo {
+            parts.append(["type": "text", "text": "video 不支持"])
+        }
+        return parts
+    }
+
     private static func encodeMessage(
         _ message: ChatQuery.ChatCompletionMessageParam,
-        family: ProviderFamily
+        family: ProviderFamily,
+        capability: MultimediaCapability
     ) throws -> [String: Any] {
         switch message {
         case .system(let systemMessage):
@@ -421,7 +485,7 @@ enum ProviderRequestEncoder {
             var encoded: [String: Any] = ["role": "user"]
             encoded["content"] = encodeUserContent(
                 userMessage.content,
-                supportsMultimedia: family.supportsMultimedia
+                capability: capability
             )
             if let name = userMessage.name {
                 encoded["name"] = name
@@ -460,7 +524,7 @@ enum ProviderRequestEncoder {
             ]
             encoded["content"] = encodeToolContent(
                 toolMessage.content,
-                supportsMultimedia: family.supportsMultimedia
+                capability: capability
             )
             return encoded
 
@@ -487,123 +551,119 @@ enum ProviderRequestEncoder {
 
     private static func encodeUserContent(
         _ content: UserMessageParam.Content,
-        supportsMultimedia: Bool
+        capability: MultimediaCapability
     ) -> Any {
         switch content {
         case .string(let string):
             return string
         case .contentParts(let parts):
-            if !supportsMultimedia {
-                var texts: [String] = []
-                var hasImage = false
-                var hasVideo = false
-                for part in parts {
-                    switch part {
-                    case .text(let textContent):
-                        texts.append(textContent.text)
-                    case .image:
-                        hasImage = true
-                    case .video:
-                        hasVideo = true
-                    }
-                }
-                if hasImage || hasVideo {
-                    return plaintextReplacingUnsupportedMultimedia(
-                        texts: texts,
-                        hasImage: hasImage,
-                        hasVideo: hasVideo
-                    )
-                }
-            }
-            return parts.map { part -> [String: Any] in
+            var texts: [String] = []
+            var encodedParts: [[String: Any]] = []
+            var hasUnsupportedImage = false
+            var hasUnsupportedVideo = false
+            var keptSupportedMedia = false
+
+            for part in parts {
                 switch part {
                 case .text(let textContent):
-                    return [
+                    texts.append(textContent.text)
+                    encodedParts.append([
                         "type": "text",
                         "text": textContent.text
-                    ]
+                    ])
                 case .image(let imageContent):
-                    return [
-                        "type": "image_url",
-                        "image_url": [
-                            "url": imageContent.imageUrl.url,
-                            "detail": imageContent.imageUrl.detail.rawValue
-                        ] as [String: Any]
-                    ] as [String: Any]
-                case .video(let videoContent):
-                    var videoDict: [String: Any] = [
-                        "url": videoContent.videoUrl.url
-                    ]
-                    if let fps = videoContent.videoUrl.fps {
-                        videoDict["fps"] = fps
+                    if capability.supportsImage {
+                        keptSupportedMedia = true
+                        encodedParts.append(
+                            encodeImageURLPart(
+                                url: imageContent.imageUrl.url,
+                                detail: imageContent.imageUrl.detail.rawValue
+                            )
+                        )
+                    } else {
+                        hasUnsupportedImage = true
                     }
-                    return [
-                        "type": "video_url",
-                        "video_url": videoDict
-                    ] as [String: Any]
+                case .video(let videoContent):
+                    if capability.supportsVideo {
+                        keptSupportedMedia = true
+                        encodedParts.append(
+                            encodeVideoURLPart(
+                                url: videoContent.videoUrl.url,
+                                fps: videoContent.videoUrl.fps
+                            )
+                        )
+                    } else {
+                        hasUnsupportedVideo = true
+                    }
                 }
             }
+
+            return finalizeMultimediaContent(
+                encodedParts: encodedParts,
+                texts: texts,
+                hasUnsupportedImage: hasUnsupportedImage,
+                hasUnsupportedVideo: hasUnsupportedVideo,
+                keptSupportedMedia: keptSupportedMedia
+            )
         }
     }
 
     private static func encodeToolContent(
         _ content: ToolMessageParam.Content,
-        supportsMultimedia: Bool
+        capability: MultimediaCapability
     ) -> Any {
         switch content {
         case .textContent(let string):
             return string
         case .contentParts(let parts):
-            if !supportsMultimedia {
-                var texts: [String] = []
-                var hasImage = false
-                var hasVideo = false
-                for part in parts {
-                    switch part {
-                    case .text(let textContent):
-                        texts.append(textContent.text)
-                    case .image:
-                        hasImage = true
-                    case .video:
-                        hasVideo = true
-                    }
-                }
-                if hasImage || hasVideo {
-                    return plaintextReplacingUnsupportedMultimedia(
-                        texts: texts,
-                        hasImage: hasImage,
-                        hasVideo: hasVideo
-                    )
-                }
-            }
-            return parts.map { part -> [String: Any] in
+            var texts: [String] = []
+            var encodedParts: [[String: Any]] = []
+            var hasUnsupportedImage = false
+            var hasUnsupportedVideo = false
+            var keptSupportedMedia = false
+
+            for part in parts {
                 switch part {
                 case .text(let textContent):
-                    return [
+                    texts.append(textContent.text)
+                    encodedParts.append([
                         "type": "text",
                         "text": textContent.text
-                    ]
+                    ])
                 case .image(let imageContent):
-                    return [
-                        "type": "image_url",
-                        "image_url": [
-                            "url": imageContent.imageUrl.url,
-                            "detail": imageContent.imageUrl.detail.rawValue
-                        ] as [String: Any]
-                    ] as [String: Any]
-                case .video(let videoContent):
-                    var videoDict: [String: Any] = [
-                        "url": videoContent.videoUrl.url
-                    ]
-                    if let fps = videoContent.videoUrl.fps {
-                        videoDict["fps"] = fps
+                    if capability.supportsImage {
+                        keptSupportedMedia = true
+                        encodedParts.append(
+                            encodeImageURLPart(
+                                url: imageContent.imageUrl.url,
+                                detail: imageContent.imageUrl.detail.rawValue
+                            )
+                        )
+                    } else {
+                        hasUnsupportedImage = true
                     }
-                    return [
-                        "type": "video_url",
-                        "video_url": videoDict
-                    ] as [String: Any]
+                case .video(let videoContent):
+                    if capability.supportsVideo {
+                        keptSupportedMedia = true
+                        encodedParts.append(
+                            encodeVideoURLPart(
+                                url: videoContent.videoUrl.url,
+                                fps: videoContent.videoUrl.fps
+                            )
+                        )
+                    } else {
+                        hasUnsupportedVideo = true
+                    }
                 }
             }
+
+            return finalizeMultimediaContent(
+                encodedParts: encodedParts,
+                texts: texts,
+                hasUnsupportedImage: hasUnsupportedImage,
+                hasUnsupportedVideo: hasUnsupportedVideo,
+                keptSupportedMedia: keptSupportedMedia
+            )
         }
     }
 
