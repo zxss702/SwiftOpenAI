@@ -789,6 +789,140 @@ final class ProviderCompatibilityTests: XCTestCase {
         XCTAssertTrue(parts.contains { ($0["type"] as? String) == "text" })
     }
 
+    func testDeepSeekNonVisionModelDowngradesImageToPlaintext() async throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let query = ChatQuery(
+            messages: [
+                .user("请分析这张图片", imageDatas: imageData, detail: .high)
+            ],
+            model: "deepseek-v4-pro"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first)
+        let userContent = try XCTUnwrap(userMessage["content"] as? String)
+        XCTAssertTrue(userContent.contains("请分析这张图片"))
+        XCTAssertTrue(userContent.contains("image 不支持"))
+        XCTAssertFalse(userContent.contains("image_url"))
+    }
+
+    func testDeepSeekVisionModelKeepsImageUrlParts() async throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let query = ChatQuery(
+            messages: [
+                .user("请分析这张图片", imageDatas: imageData, detail: .high)
+            ],
+            model: "deepseek-v4-flash-vision-exp"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first)
+        let parts = try XCTUnwrap(userMessage["content"] as? [[String: Any]])
+        XCTAssertTrue(parts.contains { ($0["type"] as? String) == "image_url" })
+        XCTAssertTrue(parts.contains { ($0["type"] as? String) == "text" })
+        XCTAssertFalse(parts.contains {
+            ($0["type"] as? String) == "text" && ($0["text"] as? String) == "image 不支持"
+        })
+    }
+
+    func testDeepSeekVisionModelDowngradesVideoToPlaintext() async throws {
+        let videoData = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70])
+        let query = ChatQuery(
+            messages: [
+                .user("请分析这段视频", videoDatas: videoData)
+            ],
+            model: "deepseek-v4-flash-vision-exp"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first)
+        let userContent = try XCTUnwrap(userMessage["content"] as? String)
+        XCTAssertTrue(userContent.contains("请分析这段视频"))
+        XCTAssertTrue(userContent.contains("video 不支持"))
+        XCTAssertFalse(userContent.contains("video_url"))
+    }
+
+    func testDeepSeekVisionModelKeepsImageAndDowngradesVideo() async throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let videoData = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70])
+        let mixedMessage = ChatQuery.ChatCompletionMessageParam.user(
+            UserMessageParam(
+                content: .contentParts([
+                    .image(
+                        UserMessageParam.Content.ContentPart.ImageContent(
+                            imageUrl: UserMessageParam.Content.ContentPart.ImageContent.ImageURL(
+                                imageData: imageData,
+                                detail: .high
+                            )
+                        )
+                    ),
+                    .video(
+                        UserMessageParam.Content.ContentPart.VideoContent(
+                            videoUrl: UserMessageParam.Content.ContentPart.VideoContent.VideoURL(
+                                videoData: videoData
+                            )
+                        )
+                    ),
+                    .text(
+                        UserMessageParam.Content.ContentPart.TextContent(text: "请分析这些媒体")
+                    )
+                ])
+            )
+        )
+        let query = ChatQuery(
+            messages: [mixedMessage],
+            model: "deepseek-v4-flash-vision-exp"
+        )
+        let prepared = try await createChatRequest(
+            query: query,
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                host: "api.deepseek.com",
+                basePath: "/v1"
+            )
+        )
+
+        let body = try requestBody(from: prepared.urlRequest)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first)
+        let parts = try XCTUnwrap(userMessage["content"] as? [[String: Any]])
+        XCTAssertTrue(parts.contains { ($0["type"] as? String) == "image_url" })
+        XCTAssertFalse(parts.contains { ($0["type"] as? String) == "video_url" })
+        XCTAssertTrue(parts.contains {
+            ($0["type"] as? String) == "text" && ($0["text"] as? String) == "video 不支持"
+        })
+        XCTAssertTrue(parts.contains {
+            ($0["type"] as? String) == "text" && ($0["text"] as? String) == "请分析这些媒体"
+        })
+    }
+
     func testReminderEncodesAsLatestReminderForDeepSeek() async throws {
         let query = ChatQuery(
             messages: [
