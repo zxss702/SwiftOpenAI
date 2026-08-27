@@ -58,6 +58,8 @@ public struct UserMessageParam: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
             case video(VideoContent)
+            /// DeepSeek Files API 引用（`type: file` + `file_id`）。
+            case file(FileContent)
             
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -70,6 +72,8 @@ public struct UserMessageParam: Codable, Sendable {
                     self = .image(try ImageContent(from: decoder))
                 case "video_url":
                     self = .video(try VideoContent(from: decoder))
+                case "file":
+                    self = .file(try FileContent(from: decoder))
                 default:
                     throw DecodingError.dataCorrupted(DecodingError.Context(
                         codingPath: decoder.codingPath,
@@ -86,6 +90,8 @@ public struct UserMessageParam: Codable, Sendable {
                     try imageContent.encode(to: encoder)
                 case .video(let videoContent):
                     try videoContent.encode(to: encoder)
+                case .file(let fileContent):
+                    try fileContent.encode(to: encoder)
                 }
             }
             
@@ -100,6 +106,21 @@ public struct UserMessageParam: Codable, Sendable {
                 
                 public init(text: String) {
                     self.text = text
+                }
+            }
+
+            /// Files API 文件引用
+            public struct FileContent: Codable, Sendable {
+                public var type: String = "file"
+                public let fileId: String
+
+                public init(fileId: String) {
+                    self.fileId = fileId
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case type
+                    case fileId = "file_id"
                 }
             }
             
@@ -337,10 +358,8 @@ public struct AssistantMessageParam: Codable, Sendable {
     /// 如果 assistant 消息包含工具调用，则此字段为必填。
     public let reasoningContent: String?
 
-    /// Anthropic Messages 线路回传用的原始 content blocks（thinking/signature/tool_use 等）。
-    ///
-    /// 对齐官方 anthropic-sdk-python cookbook：工具环必须原样回传，不可只保留文本。
-    public let anthropicContentBlocks: [[String: AnyCodableValue]]?
+    /// 扩展 content blocks（Anthropic 原样回传、Files 绑定等）。
+    public let contentBlocks: MessageContentBlocks?
     
     /// 创建助手消息参数
     /// - Parameters:
@@ -348,26 +367,26 @@ public struct AssistantMessageParam: Codable, Sendable {
     ///   - name: 消息的可选名称标识符
     ///   - toolCalls: 助手请求的工具调用列表
     ///   - reasoningContent: 推理模型的思考过程内容
-    ///   - anthropicContentBlocks: Anthropic 原始 content blocks（可选）
+    ///   - contentBlocks: 扩展 content blocks（可选）
     public init(
         content: String? = nil,
         name: String? = nil,
         toolCalls: [ToolCallParam]? = nil,
         reasoningContent: String? = nil,
-        anthropicContentBlocks: [[String: AnyCodableValue]]? = nil
+        contentBlocks: MessageContentBlocks? = nil
     ) {
         self.content = content
         self.name = name
         self.toolCalls = toolCalls
         self.reasoningContent = reasoningContent
-        self.anthropicContentBlocks = anthropicContentBlocks
+        self.contentBlocks = contentBlocks
     }
     
     private enum CodingKeys: String, CodingKey {
         case content, name
         case toolCalls = "tool_calls"
         case reasoningContent = "reasoning_content"
-        case anthropicContentBlocks = "anthropic_content_blocks"
+        case contentBlocks = "content_blocks"
     }
     
     /// 工具调用参数
@@ -440,6 +459,7 @@ public struct ToolMessageParam: Codable, Sendable {
             case text(TextContent)
             case image(ImageContent)
             case video(VideoContent)
+            case file(FileContent)
             
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -452,6 +472,8 @@ public struct ToolMessageParam: Codable, Sendable {
                     self = .image(try ImageContent(from: decoder))
                 case "video_url":
                     self = .video(try VideoContent(from: decoder))
+                case "file":
+                    self = .file(try FileContent(from: decoder))
                 default:
                     throw DecodingError.dataCorrupted(DecodingError.Context(
                         codingPath: decoder.codingPath,
@@ -468,6 +490,8 @@ public struct ToolMessageParam: Codable, Sendable {
                     try imageContent.encode(to: encoder)
                 case .video(let videoContent):
                     try videoContent.encode(to: encoder)
+                case .file(let fileContent):
+                    try fileContent.encode(to: encoder)
                 }
             }
             
@@ -481,6 +505,20 @@ public struct ToolMessageParam: Codable, Sendable {
                 
                 public init(text: String) {
                     self.text = text
+                }
+            }
+
+            public struct FileContent: Codable, Sendable {
+                public var type: String = "file"
+                public let fileId: String
+
+                public init(fileId: String) {
+                    self.fileId = fileId
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case type
+                    case fileId = "file_id"
                 }
             }
             

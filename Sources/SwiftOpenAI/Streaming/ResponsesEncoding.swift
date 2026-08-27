@@ -11,6 +11,7 @@ struct ResponsesRequestConfig: Sendable {
 struct PreparedResponsesRequest: Sendable {
     let urlRequest: URLRequest
     let metadata: ChatResponseMetadata
+    let fileBindings: [String: FileBinding]
 }
 
 nonisolated func validateResponsesParameters(
@@ -45,7 +46,8 @@ nonisolated func makeResponsesURLRequest(
     topP: Double?,
     thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?,
-    extraHeaders: [String: String]?
+    extraHeaders: [String: String]?,
+    fileBindings: [String: FileBinding] = [:]
 ) throws -> PreparedResponsesRequest {
     let url = appendResponsesPath(to: config.baseURL)
     let body = try makeResponsesRequestBody(
@@ -68,7 +70,12 @@ nonisolated func makeResponsesURLRequest(
     var request = URLRequest(url: url)
     request.timeoutInterval = 300
     request.httpMethod = "POST"
-    request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+    let httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+    try assertRequestBodyWithinDeepSeekLimitIfNeeded(
+        body: httpBody,
+        baseURL: config.baseURL.absoluteString
+    )
+    request.httpBody = httpBody
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
     request.setValue(OpenAIConfiguration.defaultUserAgent, forHTTPHeaderField: "User-Agent")
@@ -88,7 +95,8 @@ nonisolated func makeResponsesURLRequest(
             requestID: nil,
             resolvedModel: config.modelID,
             resolvedBasePath: config.resolvedBasePath
-        )
+        ),
+        fileBindings: fileBindings
     )
 }
 
@@ -273,6 +281,11 @@ private nonisolated func encodeResponsesUserContent(
                     "image_url": image.imageUrl.url,
                     "detail": image.imageUrl.detail.rawValue
                 ]
+            case .file(let file):
+                return [
+                    "type": "input_image",
+                    "file_id": file.fileId
+                ]
             case .video(let video):
                 return [
                     "type": "input_image",
@@ -302,6 +315,11 @@ private nonisolated func encodeResponsesToolOutput(
                     "type": "input_image",
                     "image_url": image.imageUrl.url,
                     "detail": image.imageUrl.detail.rawValue
+                ]
+            case .file(let file):
+                return [
+                    "type": "input_image",
+                    "file_id": file.fileId
                 ]
             case .video(let video):
                 return [

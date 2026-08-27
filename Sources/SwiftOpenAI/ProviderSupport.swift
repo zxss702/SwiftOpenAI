@@ -308,6 +308,12 @@ enum ProviderRequestEncoder {
             requestPath: requestURL.path
         )
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        if let httpBody = request.httpBody {
+            try assertRequestBodyWithinDeepSeekLimitIfNeeded(
+                body: httpBody,
+                baseURL: configuration.baseURL
+            )
+        }
 
         return PreparedChatRequest(
             urlRequest: request,
@@ -585,6 +591,16 @@ enum ProviderRequestEncoder {
                     } else {
                         hasUnsupportedImage = true
                     }
+                case .file(let fileContent):
+                    if capability.supportsImage {
+                        keptSupportedMedia = true
+                        encodedParts.append([
+                            "type": "file",
+                            "file_id": fileContent.fileId
+                        ])
+                    } else {
+                        hasUnsupportedImage = true
+                    }
                 case .video(let videoContent):
                     if capability.supportsVideo {
                         keptSupportedMedia = true
@@ -641,6 +657,16 @@ enum ProviderRequestEncoder {
                                 detail: imageContent.imageUrl.detail.rawValue
                             )
                         )
+                    } else {
+                        hasUnsupportedImage = true
+                    }
+                case .file(let fileContent):
+                    if capability.supportsImage {
+                        keptSupportedMedia = true
+                        encodedParts.append([
+                            "type": "file",
+                            "file_id": fileContent.fileId
+                        ])
                     } else {
                         hasUnsupportedImage = true
                     }

@@ -22,6 +22,16 @@ nonisolated func sendCompletionsMessage(
     extraHeaders: [String: String]?,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
+    let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
+    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        messages: messages,
+        baseURL: modelInfo.baseURL,
+        modelID: modelInfo.modelID,
+        bearerToken: modelInfo.token,
+        priorBindings: priorBindings,
+        extraHeaders: extraHeaders
+    )
+
     let actorHelper = OpenAISendMessageValueHelper()
 
     let configuration = OpenAIConfiguration(
@@ -33,7 +43,7 @@ nonisolated func sendCompletionsMessage(
     let openAI = OpenAI(configuration: configuration)
 
     let query = ChatQuery(
-        messages: messages,
+        messages: offload.messages,
         model: modelInfo.modelID,
         frequencyPenalty: frequencyPenalty,
         maxCompletionTokens: maxCompletionTokens,
@@ -117,7 +127,11 @@ nonisolated func sendCompletionsMessage(
         providerName: responseMetadata.providerName,
         requestID: responseMetadata.requestID,
         resolvedModel: responseMetadata.resolvedModel,
-        resolvedBasePath: responseMetadata.resolvedBasePath
+        resolvedBasePath: responseMetadata.resolvedBasePath,
+        contentBlocks: mergeContentBlocksForResult(
+            anthropic: nil,
+            fileBindings: offload.fileBindings
+        )
     )
 }
 
@@ -141,6 +155,16 @@ nonisolated func sendCompletionsMessageSync(
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?
 ) async throws -> OpenAIChatResult {
+    let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
+    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        messages: messages,
+        baseURL: modelInfo.baseURL,
+        modelID: modelInfo.modelID,
+        bearerToken: modelInfo.token,
+        priorBindings: priorBindings,
+        extraHeaders: extraHeaders
+    )
+
     let configuration = OpenAIConfiguration(
         token: modelInfo.token,
         baseURL: modelInfo.baseURL,
@@ -149,7 +173,7 @@ nonisolated func sendCompletionsMessageSync(
 
     let openAI = OpenAI(configuration: configuration)
     let query = ChatQuery(
-        messages: messages,
+        messages: offload.messages,
         model: modelInfo.modelID,
         frequencyPenalty: frequencyPenalty,
         maxCompletionTokens: maxCompletionTokens,
@@ -205,6 +229,10 @@ nonisolated func sendCompletionsMessageSync(
         providerName: envelope.metadata.providerName,
         requestID: envelope.metadata.requestID,
         resolvedModel: envelope.metadata.resolvedModel,
-        resolvedBasePath: envelope.metadata.resolvedBasePath
+        resolvedBasePath: envelope.metadata.resolvedBasePath,
+        contentBlocks: mergeContentBlocksForResult(
+            anthropic: nil,
+            fileBindings: offload.fileBindings
+        )
     )
 }

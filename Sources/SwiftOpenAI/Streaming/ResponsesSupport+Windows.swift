@@ -13,7 +13,8 @@ nonisolated func executeResponsesStreamWithURLSession(
         let delegate = ResponsesStreamDelegate(
             action: action,
             completion: continuation,
-            metadata: preparedRequest.metadata
+            metadata: preparedRequest.metadata,
+            fileBindings: preparedRequest.fileBindings
         )
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         let task = session.dataTask(with: preparedRequest.urlRequest)
@@ -25,6 +26,7 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
     private let action: @Sendable (OpenAIChatStreamResult) async throws -> Void
     private let completion: CheckedContinuation<OpenAIChatResult, Error>
     private let lock = NSLock()
+    private let fileBindings: [String: FileBinding]
 
     private(set) var actorHelper = OpenAISendMessageValueHelper()
     private(set) var state = ResponsesStreamState()
@@ -38,11 +40,13 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
     init(
         action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void,
         completion: CheckedContinuation<OpenAIChatResult, Error>,
-        metadata: ChatResponseMetadata
+        metadata: ChatResponseMetadata,
+        fileBindings: [String: FileBinding]
     ) {
         self.action = action
         self.completion = completion
         self.metadata = metadata
+        self.fileBindings = fileBindings
     }
 
     func urlSession(
@@ -103,7 +107,7 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
 
         if !(200...299).contains(statusCode) {
             let text = String(data: responseBody, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-            finish(with: .failure(OpenAIError.invalidResponse(text, code: statusCode)))
+            finish(with: .failure(mapDeepSeekBodyLimitError(message: text, code: statusCode)))
             return
         }
 
@@ -130,7 +134,11 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                     providerName: metadata.providerName,
                     requestID: metadata.requestID,
                     resolvedModel: metadata.resolvedModel,
-                    resolvedBasePath: metadata.resolvedBasePath
+                    resolvedBasePath: metadata.resolvedBasePath,
+                    contentBlocks: mergeContentBlocksForResult(
+                        anthropic: nil,
+                        fileBindings: fileBindings
+                    )
                 )
                 session.finishTasksAndInvalidate()
                 finish(with: .success(result))

@@ -43,6 +43,16 @@ nonisolated func sendResponsesMessage(
         pathLabel: "Responses"
     )
 
+    let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
+    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        messages: messages,
+        baseURL: modelInfo.baseURL,
+        modelID: modelInfo.modelID,
+        bearerToken: modelInfo.token,
+        priorBindings: priorBindings,
+        extraHeaders: extraHeaders
+    )
+
     let prepared = try makeResponsesURLRequest(
         config: ResponsesRequestConfig(
             modelID: modelInfo.modelID,
@@ -51,7 +61,7 @@ nonisolated func sendResponsesMessage(
             providerName: "openai-responses",
             defaultHeaders: modelInfo.defaultHeaders
         ),
-        messages: messages,
+        messages: offload.messages,
         frequencyPenalty: frequencyPenalty,
         maxCompletionTokens: maxCompletionTokens,
         parallelToolCalls: parallelToolCalls,
@@ -64,7 +74,8 @@ nonisolated func sendResponsesMessage(
         topP: topP,
         thinkLevel: thinkLevel,
         extraBody: extraBody,
-        extraHeaders: extraHeaders
+        extraHeaders: extraHeaders,
+        fileBindings: offload.fileBindings
     )
 
     return try await executeResponsesStream(
@@ -102,7 +113,10 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await responsesBodyString(from: response.body)
-        throw OpenAIError.invalidResponse(responseBody, code: Int(response.status.code))
+        throw mapDeepSeekBodyLimitError(
+            message: responseBody,
+            code: Int(response.status.code)
+        )
     }
 
     var lastSendTime = Date().timeIntervalSince1970
@@ -149,7 +163,11 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         providerName: metadata.providerName,
         requestID: metadata.requestID,
         resolvedModel: metadata.resolvedModel,
-        resolvedBasePath: metadata.resolvedBasePath
+        resolvedBasePath: metadata.resolvedBasePath,
+        contentBlocks: mergeContentBlocksForResult(
+            anthropic: nil,
+            fileBindings: preparedRequest.fileBindings
+        )
     )
 }
 

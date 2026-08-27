@@ -28,6 +28,16 @@ nonisolated func sendCodexResponsesMessage(
         pathLabel: "Codex responses"
     )
 
+    let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
+    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        messages: messages,
+        baseURL: modelInfo.baseURL,
+        modelID: modelInfo.modelID,
+        bearerToken: modelInfo.accessToken,
+        priorBindings: priorBindings,
+        extraHeaders: extraHeaders
+    )
+
     let prepared = try makeResponsesURLRequest(
         config: ResponsesRequestConfig(
             modelID: modelInfo.modelID,
@@ -36,7 +46,7 @@ nonisolated func sendCodexResponsesMessage(
             providerName: "openai-codex",
             defaultHeaders: modelInfo.defaultHeaders
         ),
-        messages: messages,
+        messages: offload.messages,
         frequencyPenalty: frequencyPenalty,
         maxCompletionTokens: maxCompletionTokens,
         parallelToolCalls: parallelToolCalls,
@@ -49,7 +59,8 @@ nonisolated func sendCodexResponsesMessage(
         topP: topP,
         thinkLevel: thinkLevel,
         extraBody: extraBody,
-        extraHeaders: extraHeaders
+        extraHeaders: extraHeaders,
+        fileBindings: offload.fileBindings
     )
 
     return try await executeResponsesStream(

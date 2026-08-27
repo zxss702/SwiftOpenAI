@@ -45,9 +45,19 @@ nonisolated func sendAnthropicMessage(
         responseFormat: responseFormat
     )
 
+    let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
+    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        messages: messages,
+        baseURL: modelInfo.baseURL,
+        modelID: modelInfo.modelID,
+        bearerToken: modelInfo.token,
+        priorBindings: priorBindings,
+        extraHeaders: extraHeaders
+    )
+
     let prepared = try makeAnthropicURLRequest(
         modelInfo: modelInfo,
-        messages: messages,
+        messages: offload.messages,
         maxCompletionTokens: maxCompletionTokens,
         parallelToolCalls: parallelToolCalls,
         stop: stop,
@@ -57,7 +67,8 @@ nonisolated func sendAnthropicMessage(
         topP: topP,
         thinkLevel: thinkLevel,
         extraBody: extraBody,
-        extraHeaders: extraHeaders
+        extraHeaders: extraHeaders,
+        fileBindings: offload.fileBindings
     )
 
     return try await executeAnthropicStream(
@@ -95,7 +106,10 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await anthropicBodyString(from: response.body)
-        throw OpenAIError.invalidResponse(responseBody, code: Int(response.status.code))
+        throw mapDeepSeekBodyLimitError(
+            message: responseBody,
+            code: Int(response.status.code)
+        )
     }
 
     var lastSendTime = Date().timeIntervalSince1970
@@ -143,9 +157,12 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
         requestID: metadata.requestID,
         resolvedModel: metadata.resolvedModel,
         resolvedBasePath: metadata.resolvedBasePath,
-        anthropicContentBlocks: actorHelper.anthropicContentBlocks.isEmpty
-            ? nil
-            : actorHelper.anthropicContentBlocks
+        contentBlocks: mergeContentBlocksForResult(
+            anthropic: actorHelper.anthropicContentBlocks.isEmpty
+                ? nil
+                : actorHelper.anthropicContentBlocks,
+            fileBindings: preparedRequest.fileBindings
+        )
     )
 }
 
