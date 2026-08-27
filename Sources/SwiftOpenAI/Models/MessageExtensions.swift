@@ -460,14 +460,16 @@ extension ChatQuery.ChatCompletionMessageParam {
         _ text: String,
         toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
         name: String? = nil,
-        reasoningContent: String? = nil
+        reasoningContent: String? = nil,
+        anthropicContentBlocks: [[String: AnyCodableValue]]? = nil
     ) -> Self {
         return .assistant(
             AssistantMessageParam(
                 content: text,
                 name: name,
                 toolCalls: (toolCalls?.isEmpty ?? true) ? nil : toolCalls,
-                reasoningContent: reasoningContent
+                reasoningContent: reasoningContent,
+                anthropicContentBlocks: anthropicContentBlocks
             )
         )
     }

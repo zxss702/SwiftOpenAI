@@ -142,7 +142,10 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
         providerName: metadata.providerName,
         requestID: metadata.requestID,
         resolvedModel: metadata.resolvedModel,
-        resolvedBasePath: metadata.resolvedBasePath
+        resolvedBasePath: metadata.resolvedBasePath,
+        anthropicContentBlocks: actorHelper.anthropicContentBlocks.isEmpty
+            ? nil
+            : actorHelper.anthropicContentBlocks
     )
 }
 

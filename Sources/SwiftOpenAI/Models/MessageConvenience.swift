@@ -336,6 +336,11 @@ public struct AssistantMessageParam: Codable, Sendable {
     /// 此字段包含模型的内部推理过程。在多轮对话中，
     /// 如果 assistant 消息包含工具调用，则此字段为必填。
     public let reasoningContent: String?
+
+    /// Anthropic Messages 线路回传用的原始 content blocks（thinking/signature/tool_use 等）。
+    ///
+    /// 对齐官方 anthropic-sdk-python cookbook：工具环必须原样回传，不可只保留文本。
+    public let anthropicContentBlocks: [[String: AnyCodableValue]]?
     
     /// 创建助手消息参数
     /// - Parameters:
@@ -343,22 +348,26 @@ public struct AssistantMessageParam: Codable, Sendable {
     ///   - name: 消息的可选名称标识符
     ///   - toolCalls: 助手请求的工具调用列表
     ///   - reasoningContent: 推理模型的思考过程内容
+    ///   - anthropicContentBlocks: Anthropic 原始 content blocks（可选）
     public init(
         content: String? = nil,
         name: String? = nil,
         toolCalls: [ToolCallParam]? = nil,
-        reasoningContent: String? = nil
+        reasoningContent: String? = nil,
+        anthropicContentBlocks: [[String: AnyCodableValue]]? = nil
     ) {
         self.content = content
         self.name = name
         self.toolCalls = toolCalls
         self.reasoningContent = reasoningContent
+        self.anthropicContentBlocks = anthropicContentBlocks
     }
     
     private enum CodingKeys: String, CodingKey {
         case content, name
         case toolCalls = "tool_calls"
         case reasoningContent = "reasoning_content"
+        case anthropicContentBlocks = "anthropic_content_blocks"
     }
     
     /// 工具调用参数

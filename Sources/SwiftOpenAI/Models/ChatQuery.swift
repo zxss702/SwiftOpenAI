@@ -220,6 +220,7 @@ public struct ChatQuery: Codable, Sendable {
         // MARK: - Codable Implementation
         private enum CodingKeys: String, CodingKey {
             case role, content, name, toolCalls = "tool_calls", toolCallId = "tool_call_id", reasoningContent = "reasoning_content"
+            case anthropicContentBlocks = "anthropic_content_blocks"
         }
         
         public init(from decoder: Decoder) throws {
@@ -252,7 +253,14 @@ public struct ChatQuery: Codable, Sendable {
                 let name = try container.decodeIfPresent(String.self, forKey: .name)
                 let toolCalls = try container.decodeIfPresent([AssistantMessageParam.ToolCallParam].self, forKey: .toolCalls)
                 let reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent)
-                self = .assistant(AssistantMessageParam(content: content, name: name, toolCalls: toolCalls, reasoningContent: reasoningContent))
+                let anthropicContentBlocks = try container.decodeIfPresent([[String: AnyCodableValue]].self, forKey: .anthropicContentBlocks)
+                self = .assistant(AssistantMessageParam(
+                    content: content,
+                    name: name,
+                    toolCalls: toolCalls,
+                    reasoningContent: reasoningContent,
+                    anthropicContentBlocks: anthropicContentBlocks
+                ))
                 
             case .tool:
                 let toolCallId = try container.decode(String.self, forKey: .toolCallId)
@@ -298,6 +306,7 @@ public struct ChatQuery: Codable, Sendable {
                 try container.encodeIfPresent(assistantParam.name, forKey: .name)
                 try container.encodeIfPresent(assistantParam.toolCalls, forKey: .toolCalls)
                 try container.encodeIfPresent(assistantParam.reasoningContent, forKey: .reasoningContent)
+                try container.encodeIfPresent(assistantParam.anthropicContentBlocks, forKey: .anthropicContentBlocks)
                 
             case .tool(let toolParam):
                 try container.encode(Role.tool, forKey: .role)

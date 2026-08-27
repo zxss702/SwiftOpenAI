@@ -3,7 +3,7 @@ import XCTest
 
 final class AnthropicSSETests: XCTestCase {
 
-    func testSSEAccumulatesTextThinkingToolPartialJSONAndUsage() async throws {
+    func testSSEAccumulatesTextThinkingSignatureToolPartialJSONAndUsage() async throws {
         let helper = OpenAISendMessageValueHelper()
         var state = AnthropicStreamState()
         var metadata = ChatResponseMetadata(
@@ -25,22 +25,31 @@ final class AnthropicSSETests: XCTestCase {
             TestFixtures.makeSSELine([
                 "type": "content_block_start",
                 "index": 0,
-                "content_block": ["type": "text", "text": ""]
+                "content_block": ["type": "thinking", "thinking": ""]
             ]),
-            "event: content_block_delta",
             TestFixtures.makeSSELine([
                 "type": "content_block_delta",
                 "index": 0,
+                "delta": ["type": "thinking_delta", "thinking": "ponder"]
+            ]),
+            TestFixtures.makeSSELine([
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": ["type": "signature_delta", "signature": "sig_final"]
+            ]),
+            TestFixtures.makeSSELine([
+                "type": "content_block_start",
+                "index": 1,
+                "content_block": ["type": "text", "text": ""]
+            ]),
+            TestFixtures.makeSSELine([
+                "type": "content_block_delta",
+                "index": 1,
                 "delta": ["type": "text_delta", "text": "Hello"]
             ])
         ].joined(separator: "\n") + "\n"
 
         let secondChunk = try [
-            TestFixtures.makeSSELine([
-                "type": "content_block_delta",
-                "index": 1,
-                "delta": ["type": "thinking_delta", "thinking": "ponder"]
-            ]),
             TestFixtures.makeSSELine([
                 "type": "content_block_start",
                 "index": 2,
@@ -60,6 +69,14 @@ final class AnthropicSSETests: XCTestCase {
                 "type": "content_block_delta",
                 "index": 2,
                 "delta": ["type": "input_json_delta", "partial_json": #"Shanghai"}"#]
+            ]),
+            TestFixtures.makeSSELine([
+                "type": "content_block_start",
+                "index": 3,
+                "content_block": [
+                    "type": "redacted_thinking",
+                    "data": "opaque-redacted"
+                ]
             ]),
             TestFixtures.makeSSELine([
                 "type": "message_delta",
@@ -98,6 +115,14 @@ final class AnthropicSSETests: XCTestCase {
         XCTAssertEqual(toolCalls[0].id, "toolu_1")
         XCTAssertEqual(toolCalls[0].function?.name, "get_weather")
         XCTAssertEqual(toolCalls[0].function?.arguments, #"{"city":"Shanghai"}"#)
+
+        let blocks = await helper.anthropicContentBlocks
+        XCTAssertEqual(blocks.count, 4)
+        XCTAssertEqual(blocks[0]["type"], .string("thinking"))
+        XCTAssertEqual(blocks[0]["thinking"], .string("ponder"))
+        XCTAssertEqual(blocks[0]["signature"], .string("sig_final"))
+        XCTAssertEqual(blocks[3]["type"], .string("redacted_thinking"))
+        XCTAssertEqual(blocks[3]["data"], .string("opaque-redacted"))
 
         XCTAssertEqual(state.usage?.promptTokens, 10)
         XCTAssertEqual(state.usage?.completionTokens, 22)

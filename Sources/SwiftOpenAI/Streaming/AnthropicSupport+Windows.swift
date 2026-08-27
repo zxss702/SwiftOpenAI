@@ -130,7 +130,10 @@ private final class AnthropicStreamDelegate: NSObject, URLSessionDataDelegate, @
                     providerName: metadata.providerName,
                     requestID: metadata.requestID,
                     resolvedModel: metadata.resolvedModel,
-                    resolvedBasePath: metadata.resolvedBasePath
+                    resolvedBasePath: metadata.resolvedBasePath,
+                    anthropicContentBlocks: actorHelper.anthropicContentBlocks.isEmpty
+                        ? nil
+                        : actorHelper.anthropicContentBlocks
                 )
                 session.finishTasksAndInvalidate()
                 finish(with: .success(result))

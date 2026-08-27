@@ -67,6 +67,9 @@ public struct OpenAIChatResult: Sendable {
 
     /// 实际使用的基础路径
     public let resolvedBasePath: String?
+
+    /// Anthropic 原始 content blocks（仅 Anthropic 线路有值）
+    public let anthropicContentBlocks: [[String: AnyCodableValue]]?
     
     public init(
         fullThinkingText: String,
@@ -76,7 +79,8 @@ public struct OpenAIChatResult: Sendable {
         providerName: String? = nil,
         requestID: String? = nil,
         resolvedModel: String? = nil,
-        resolvedBasePath: String? = nil
+        resolvedBasePath: String? = nil,
+        anthropicContentBlocks: [[String: AnyCodableValue]]? = nil
     ) {
         self.fullThinkingText = fullThinkingText
         self.fullText = fullText
@@ -86,5 +90,6 @@ public struct OpenAIChatResult: Sendable {
         self.requestID = requestID
         self.resolvedModel = resolvedModel
         self.resolvedBasePath = resolvedBasePath
+        self.anthropicContentBlocks = anthropicContentBlocks
     }
 }

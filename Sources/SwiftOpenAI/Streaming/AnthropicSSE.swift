@@ -5,6 +5,9 @@ struct AnthropicStreamState {
     var usage: ChatStreamResult.Choice.UsageInfo?
     var toolCallIndexByContentIndex: [Int: Int] = [:]
     var nextToolCallIndex: Int = 0
+    /// Sparse-by-index content blocks, aligned with Anthropic content indices.
+    var contentBlocks: [[String: Any]] = []
+    var toolInputJSONByContentIndex: [Int: String] = [:]
 }
 
 nonisolated func processAnthropicSSEBytes(
@@ -23,6 +26,15 @@ nonisolated func processAnthropicSSEBytes(
             state: &state,
             metadata: &metadata
         )
+    }
+
+    if finalize {
+        let blocks = state.contentBlocks
+            .filter { !$0.isEmpty }
+            .map { block in
+                block.mapValues { AnyCodableValue.from($0) }
+            }
+        await actorHelper.setAnthropicContentBlocks(blocks)
     }
 }
 
@@ -68,12 +80,16 @@ private nonisolated func processAnthropicSSELine(
               let blockType = block["type"] as? String else {
             return
         }
+        ensureAnthropicContentBlockCapacity(&state, index: index)
+        state.contentBlocks[index] = block
+
         if blockType == "tool_use" {
             let callID = (block["id"] as? String) ?? UUID().uuidString
             let name = (block["name"] as? String) ?? ""
             let toolIndex = state.nextToolCallIndex
             state.nextToolCallIndex += 1
             state.toolCallIndexByContentIndex[index] = toolIndex
+            state.toolInputJSONByContentIndex[index] = ""
             await actorHelper.appendAllToolCalls(
                 .init(
                     index: toolIndex,
@@ -90,16 +106,44 @@ private nonisolated func processAnthropicSSELine(
               let deltaType = delta["type"] as? String else {
             return
         }
+        ensureAnthropicContentBlockCapacity(&state, index: index)
         switch deltaType {
         case "text_delta":
             let text = (delta["text"] as? String) ?? ""
             await actorHelper.setText(thinkingText: "", text: text)
+            var block = state.contentBlocks[index]
+            if block["type"] == nil {
+                block["type"] = "text"
+            }
+            let existing = (block["text"] as? String) ?? ""
+            block["text"] = existing + text
+            state.contentBlocks[index] = block
         case "thinking_delta":
             let thinking = (delta["thinking"] as? String) ?? ""
             await actorHelper.setText(thinkingText: thinking, text: "")
+            var block = state.contentBlocks[index]
+            if block["type"] == nil {
+                block["type"] = "thinking"
+            }
+            let existing = (block["thinking"] as? String) ?? ""
+            block["thinking"] = existing + thinking
+            state.contentBlocks[index] = block
+        case "signature_delta":
+            // Official SDK assigns (does not append) signature onto the thinking block.
+            let signature = (delta["signature"] as? String) ?? ""
+            var block = state.contentBlocks[index]
+            if block["type"] == nil {
+                block["type"] = "thinking"
+            }
+            block["signature"] = signature
+            state.contentBlocks[index] = block
         case "input_json_delta":
             guard let toolIndex = state.toolCallIndexByContentIndex[index] else { return }
             let partial = (delta["partial_json"] as? String) ?? ""
+            let existingJSON = state.toolInputJSONByContentIndex[index] ?? ""
+            let combined = existingJSON + partial
+            state.toolInputJSONByContentIndex[index] = combined
+
             let existingCalls = await actorHelper.allToolCalls
             guard toolIndex < existingCalls.count else { return }
             let existing = existingCalls[toolIndex]
@@ -109,10 +153,17 @@ private nonisolated func processAnthropicSSELine(
                 type: existing.type,
                 function: .init(
                     name: existing.function?.name ?? "",
-                    arguments: (existing.function?.arguments ?? "") + partial
+                    arguments: combined
                 )
             )
             await actorHelper.setAllToolCalls(index: toolIndex, call: updated)
+
+            var block = state.contentBlocks[index]
+            if let data = combined.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                block["input"] = object
+            }
+            state.contentBlocks[index] = block
         default:
             return
         }
@@ -133,6 +184,15 @@ private nonisolated func processAnthropicSSELine(
 
     default:
         return
+    }
+}
+
+private nonisolated func ensureAnthropicContentBlockCapacity(
+    _ state: inout AnthropicStreamState,
+    index: Int
+) {
+    while state.contentBlocks.count <= index {
+        state.contentBlocks.append([:])
     }
 }
 

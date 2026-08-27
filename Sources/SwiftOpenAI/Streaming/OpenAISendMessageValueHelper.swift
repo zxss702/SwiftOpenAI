@@ -29,6 +29,9 @@ public actor OpenAISendMessageValueHelper {
     
     /// 所有工具调用列表
     public var allToolCalls: [ChatStreamResult.Choice.ChoiceDelta.ChoiceDeltaToolCall] = []
+
+    /// Anthropic 原始 content blocks
+    public var anthropicContentBlocks: [[String: AnyCodableValue]] = []
     
     /// Token 使用统计信息
     public var usage: ChatStreamResult.Choice.UsageInfo?
@@ -106,6 +109,10 @@ public actor OpenAISendMessageValueHelper {
         allToolCalls.append(call)
         toolCallsDirty = true
     }
+
+    public func setAnthropicContentBlocks(_ blocks: [[String: AnyCodableValue]]) {
+        anthropicContentBlocks = blocks
+    }
     
     /// 设置 Token 使用统计信息
     ///
@@ -122,6 +129,7 @@ public actor OpenAISendMessageValueHelper {
         subText = ""
         toolCallsDirty = false
         allToolCalls = []
+        anthropicContentBlocks = []
         usage = nil
     }
 }
