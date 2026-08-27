@@ -7,15 +7,16 @@ final class CompletionsPathTests: XCTestCase {
         let query = ChatQuery(messages: [.user("hello")], model: "glm-4.5")
         let prepared = try await createChatRequest(
             query: query,
-            configuration: TestFixtures.configuration(host: "open.bigmodel.cn", basePath: "/api/coding/paas/v4")
+            configuration: TestFixtures.configuration(
+                baseURL: "https://open.bigmodel.cn/api/coding/paas/v4"
+            )
         )
         XCTAssertEqual(prepared.urlRequest.url?.path, "/api/coding/paas/v4/chat/completions")
 
         let prebuilt = try await createChatRequest(
             query: query,
             configuration: TestFixtures.configuration(
-                host: "open.bigmodel.cn",
-                basePath: "/api/coding/paas/v4/chat/completions"
+                baseURL: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
             )
         )
         XCTAssertEqual(prebuilt.urlRequest.url?.path, "/api/coding/paas/v4/chat/completions")
@@ -30,19 +31,22 @@ final class CompletionsPathTests: XCTestCase {
 
         let defaultPrepared = try await createChatRequest(
             query: query,
-            configuration: OpenAIConfiguration(token: "test-token", host: "api.deepseek.com")
+            configuration: OpenAIConfiguration(
+                token: "test-token",
+                baseURL: "https://api.deepseek.com"
+            )
         )
         XCTAssertEqual(defaultPrepared.urlRequest.url?.path, "/beta/chat/completions")
 
         let v1Prepared = try await createChatRequest(
             query: query,
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         XCTAssertEqual(v1Prepared.urlRequest.url?.path, "/beta/chat/completions")
 
         let customPrepared = try await createChatRequest(
             query: query,
-            configuration: TestFixtures.configuration(host: "api.deepseek.com", basePath: "/custom")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/custom")
         )
         XCTAssertEqual(customPrepared.urlRequest.url?.path, "/custom/chat/completions")
     }
@@ -54,8 +58,13 @@ final class CompletionsPathTests: XCTestCase {
                 model: "deepseek-v4-pro",
                 tools: [TestFixtures.weatherTool(strict: false)]
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         XCTAssertEqual(prepared.urlRequest.url?.path, "/v1/chat/completions")
+    }
+
+    func testEmptyPathInjectsV1ChatCompletions() throws {
+        let url = try APIBaseURL.appendChatCompletions(to: "https://api.deepseek.com")
+        XCTAssertEqual(url.absoluteString, "https://api.deepseek.com/v1/chat/completions")
     }
 }

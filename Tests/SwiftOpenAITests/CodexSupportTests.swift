@@ -11,8 +11,8 @@ final class CodexSupportTests: XCTestCase {
         let prepared = try makeResponsesURLRequest(
             config: ResponsesRequestConfig(
                 modelID: codexInfo.modelID,
-                baseURL: try XCTUnwrap(codexInfo.baseURL),
-                resolvedBasePath: codexInfo.basePath,
+                baseURL: try APIBaseURL.parse(codexInfo.baseURL),
+                resolvedBasePath: APIBaseURL.configuredPath(of: codexInfo.baseURL),
                 providerName: "openai-codex",
                 defaultHeaders: codexInfo.defaultHeaders,
                 requireDefaultInstructions: true
@@ -42,6 +42,8 @@ final class CodexSupportTests: XCTestCase {
 
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertEqual(body["instructions"] as? String, "You are a helpful assistant.")
+        XCTAssertEqual(body["store"] as? Bool, false)
+        XCTAssertEqual(body["stream"] as? Bool, true)
     }
 
     func testMakeCodexResponsesRequestBodyRequiresDefaultInstructions() throws {
@@ -63,5 +65,6 @@ final class CodexSupportTests: XCTestCase {
         )
         XCTAssertEqual(body["instructions"] as? String, "You are a helpful assistant.")
         XCTAssertEqual(body["model"] as? String, "gpt-5.4")
+        XCTAssertEqual(body["store"] as? Bool, false)
     }
 }

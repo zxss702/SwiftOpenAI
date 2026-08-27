@@ -58,10 +58,9 @@ enum TestFixtures {
     }
 
     static func configuration(
-        host: String,
-        basePath: String? = "/v1",
+        baseURL: String = "https://api.openai.com/v1",
         token: String = "test-token"
     ) -> OpenAIConfiguration {
-        OpenAIConfiguration(token: token, host: host, basePath: basePath)
+        OpenAIConfiguration(token: token, baseURL: baseURL)
     }
 }

@@ -9,6 +9,9 @@ final class ResponsesEncodingTests: XCTestCase {
 
         let already = try XCTUnwrap(URL(string: "https://api.openai.com/v1/responses"))
         XCTAssertEqual(appendResponsesPath(to: already).absoluteString, "https://api.openai.com/v1/responses")
+
+        let root = try XCTUnwrap(URL(string: "https://api.deepseek.com"))
+        XCTAssertEqual(appendResponsesPath(to: root).absoluteString, "https://api.deepseek.com/v1/responses")
     }
 
     func testGenericResponsesOmitsDefaultInstructionsAndUsesBearer() throws {
@@ -42,6 +45,7 @@ final class ResponsesEncodingTests: XCTestCase {
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["stream"] as? Bool, true)
+        XCTAssertEqual(body["store"] as? Bool, false)
     }
 
     func testRequestBodyMapsMessagesToolsReasoningAndText() throws {

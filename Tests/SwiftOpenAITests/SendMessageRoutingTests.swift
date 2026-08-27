@@ -43,6 +43,26 @@ final class SendMessageRoutingTests: XCTestCase {
         }
     }
 
+    func testAnthropicBranchRejectsPredictionBeforeNetwork() async {
+        do {
+            _ = try await sendMessage(
+                modelInfo: .anthropic(.init(token: "anth-key", modelID: "claude-sonnet-4-5")),
+                messages: [.user("hello")],
+                prediction: .init(type: "content", content: "prefill")
+            ) { _ in }
+            XCTFail("Expected Anthropic branch to reject prediction")
+        } catch let error as OpenAIError {
+            switch error {
+            case .providerUnsupported(let message):
+                XCTAssertTrue(message.contains("prediction"))
+            default:
+                XCTFail("Unexpected OpenAIError: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testResponsesBranchRejectsUserAndNonOneN() async {
         do {
             _ = try await sendMessage(

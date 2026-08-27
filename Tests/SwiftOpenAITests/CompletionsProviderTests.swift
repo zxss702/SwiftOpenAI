@@ -24,7 +24,7 @@ final class CompletionsProviderTests: XCTestCase {
                 maxCompletionTokens: 256,
                 thinkLevel: .high
             ),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertEqual(body["max_completion_tokens"] as? Int, 256)
@@ -44,7 +44,7 @@ final class CompletionsProviderTests: XCTestCase {
                 maxCompletionTokens: 128,
                 thinkLevel: .high
             ),
-            configuration: TestFixtures.configuration(host: "api.minimaxi.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.minimaxi.com/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertEqual(body["max_tokens"] as? Int, 128)
@@ -63,7 +63,7 @@ final class CompletionsProviderTests: XCTestCase {
     func testMiniMaxThinkLevelNoneDisablesThinkingButKeepsSplit() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "MiniMax-M2.7", thinkLevel: ThinkLevel.none),
-            configuration: TestFixtures.configuration(host: "api.minimax.io")
+            configuration: TestFixtures.configuration(baseURL: "https://api.minimax.io/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertEqual(body["reasoning_split"] as? Bool, true)
@@ -74,7 +74,7 @@ final class CompletionsProviderTests: XCTestCase {
     func testStreamingDefaultsIncludeUsage() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "gpt-4", stream: true),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         let streamOptions = try XCTUnwrap(body["stream_options"] as? [String: Any])
@@ -90,7 +90,7 @@ final class CompletionsProviderTests: XCTestCase {
                 ],
                 model: "kimi-k2"
             ),
-            configuration: TestFixtures.configuration(host: "api.kimi.com", basePath: "/coding/v1")
+            configuration: TestFixtures.configuration(baseURL: "https://api.kimi.com/coding/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
@@ -102,7 +102,7 @@ final class CompletionsProviderTests: XCTestCase {
     func testThinkLevelMappingsForGLMDashScopeDeepSeekAndGeneric() async throws {
         let glm = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", thinkLevel: .high),
-            configuration: TestFixtures.configuration(host: "open.bigmodel.cn", basePath: "/api/paas/v4")
+            configuration: TestFixtures.configuration(baseURL: "https://open.bigmodel.cn/api/paas/v4")
         )
         let glmBody = try TestFixtures.requestBody(from: glm.urlRequest)
         XCTAssertEqual((glmBody["thinking"] as? [String: Any])?["type"] as? String, "enabled")
@@ -110,14 +110,14 @@ final class CompletionsProviderTests: XCTestCase {
 
         let dash = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "qwen-plus", thinkLevel: .medium),
-            configuration: TestFixtures.configuration(host: "dashscope.aliyuncs.com", basePath: "/compatible-mode/v1")
+            configuration: TestFixtures.configuration(baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1")
         )
         let dashBody = try TestFixtures.requestBody(from: dash.urlRequest)
         XCTAssertEqual(dashBody["enable_thinking"] as? Bool, true)
 
         let deepseek = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .xhigh),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let deepseekBody = try TestFixtures.requestBody(from: deepseek.urlRequest)
         XCTAssertEqual((deepseekBody["thinking"] as? [String: Any])?["type"] as? String, "enabled")
@@ -125,7 +125,7 @@ final class CompletionsProviderTests: XCTestCase {
 
         let generic = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "custom", thinkLevel: .max),
-            configuration: TestFixtures.configuration(host: "api.siliconflow.cn")
+            configuration: TestFixtures.configuration(baseURL: "https://api.siliconflow.cn/v1")
         )
         let genericBody = try TestFixtures.requestBody(from: generic.urlRequest)
         XCTAssertEqual(genericBody["reasoning_effort"] as? String, "max")
@@ -134,7 +134,7 @@ final class CompletionsProviderTests: XCTestCase {
     func testToolStrictPassthroughAndStripping() async throws {
         let openai = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "gpt-5", tools: [TestFixtures.weatherTool(strict: nil)]),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         let openaiTools = try XCTUnwrap(
             (try TestFixtures.requestBody(from: openai.urlRequest)["tools"] as? [[String: Any]])
@@ -143,7 +143,7 @@ final class CompletionsProviderTests: XCTestCase {
 
         let moonshot = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "kimi-k2", tools: [TestFixtures.weatherTool(strict: false)]),
-            configuration: TestFixtures.configuration(host: "api.moonshot.cn")
+            configuration: TestFixtures.configuration(baseURL: "https://api.moonshot.cn/v1")
         )
         let moonshotTools = try XCTUnwrap(
             (try TestFixtures.requestBody(from: moonshot.urlRequest)["tools"] as? [[String: Any]])
@@ -153,7 +153,7 @@ final class CompletionsProviderTests: XCTestCase {
         for host in ["open.bigmodel.cn", "api.minimaxi.com", "api.siliconflow.cn"] {
             let prepared = try await createChatRequest(
                 query: ChatQuery(messages: [.user("hello")], model: "m", tools: [TestFixtures.weatherTool(strict: true)]),
-                configuration: TestFixtures.configuration(host: host)
+                configuration: TestFixtures.configuration(baseURL: "https://\(host)/v1")
             )
             let tools = try XCTUnwrap(
                 (try TestFixtures.requestBody(from: prepared.urlRequest)["tools"] as? [[String: Any]])
@@ -167,7 +167,7 @@ final class CompletionsProviderTests: XCTestCase {
                 model: "deepseek-v4-pro",
                 tools: [TestFixtures.weatherTool(strict: true)]
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let deepseekTools = try XCTUnwrap(
             (try TestFixtures.requestBody(from: deepseek.urlRequest)["tools"] as? [[String: Any]])
@@ -187,7 +187,7 @@ final class CompletionsProviderTests: XCTestCase {
                 ],
                 model: "MiniMax-M2.7"
             ),
-            configuration: TestFixtures.configuration(host: "api.minimaxi.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.minimaxi.com/v1")
         )
         let messages = try XCTUnwrap(
             (try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])
@@ -204,7 +204,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("请分析这张图片", imageDatas: TestFixtures.tinyPNG, detail: .high)],
                 model: "gpt-4o"
             ),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         let messages = try XCTUnwrap(
             (try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])
@@ -219,7 +219,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
                 model: "deepseek-v4-pro"
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let nonVisionContent = try XCTUnwrap(
             ((try TestFixtures.requestBody(from: nonVision.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
@@ -231,7 +231,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
                 model: "deepseek-v4-flash-vision-exp"
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let visionParts = try XCTUnwrap(
             ((try TestFixtures.requestBody(from: vision.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
@@ -243,7 +243,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("vid", videoDatas: TestFixtures.tinyVideo)],
                 model: "deepseek-v4-flash-vision-exp"
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let videoContent = try XCTUnwrap(
             ((try TestFixtures.requestBody(from: videoOnly.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
@@ -257,7 +257,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("hi"), .reminder("Today is 2026-08-05.")],
                 model: "deepseek-v4-flash"
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let deepseekMessages = try XCTUnwrap(
             (try TestFixtures.requestBody(from: deepseek.urlRequest)["messages"] as? [[String: Any]])
@@ -266,7 +266,7 @@ final class CompletionsProviderTests: XCTestCase {
 
         let openai = try await createChatRequest(
             query: ChatQuery(messages: [.user("hi"), .reminder("Today is 2026-08-05.")], model: "gpt-4o"),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         XCTAssertEqual(
             ((try TestFixtures.requestBody(from: openai.urlRequest)["messages"] as? [[String: Any]])?.last?["role"] as? String),
@@ -276,7 +276,7 @@ final class CompletionsProviderTests: XCTestCase {
         for host in ["dashscope.aliyuncs.com", "open.bigmodel.cn", "api.minimaxi.com", "api.siliconflow.cn"] {
             let prepared = try await createChatRequest(
                 query: ChatQuery(messages: [.user("hi"), .reminder("Today is 2026-08-05.")], model: "m"),
-                configuration: TestFixtures.configuration(host: host)
+                configuration: TestFixtures.configuration(baseURL: "https://\(host)/v1")
             )
             XCTAssertEqual(
                 ((try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])?.last?["role"] as? String),
@@ -305,7 +305,7 @@ final class CompletionsProviderTests: XCTestCase {
                 model: "deepseek-chat",
                 responseFormat: TestFixtures.sampleJsonSchemaFormat()
             ),
-            configuration: TestFixtures.configuration(host: "api.deepseek.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let deepseekFormat = try XCTUnwrap(
             (try TestFixtures.requestBody(from: deepseek.urlRequest)["response_format"] as? [String: Any])
@@ -318,7 +318,7 @@ final class CompletionsProviderTests: XCTestCase {
                 model: "MiniMax-M2.7",
                 responseFormat: TestFixtures.sampleJsonSchemaFormat()
             ),
-            configuration: TestFixtures.configuration(host: "api.minimaxi.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.minimaxi.com/v1")
         )
         XCTAssertNil(try TestFixtures.requestBody(from: minimax.urlRequest)["response_format"])
 
@@ -328,7 +328,7 @@ final class CompletionsProviderTests: XCTestCase {
                 model: "gpt-4o",
                 responseFormat: TestFixtures.sampleJsonSchemaFormat()
             ),
-            configuration: TestFixtures.configuration(host: "api.openai.com")
+            configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
         let openaiFormat = try XCTUnwrap(
             (try TestFixtures.requestBody(from: openai.urlRequest)["response_format"] as? [String: Any])
@@ -341,7 +341,7 @@ final class CompletionsProviderTests: XCTestCase {
                 model: "kimi-k2-thinking",
                 responseFormat: .jsonObject
             ),
-            configuration: TestFixtures.configuration(host: "api.moonshot.cn")
+            configuration: TestFixtures.configuration(baseURL: "https://api.moonshot.cn/v1")
         )
         XCTAssertNil(try TestFixtures.requestBody(from: moonshotThinking.urlRequest)["response_format"])
     }
