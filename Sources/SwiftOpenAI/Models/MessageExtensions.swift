@@ -461,7 +461,7 @@ extension ChatQuery.ChatCompletionMessageParam {
         toolCalls: [AssistantMessageParam.ToolCallParam]? = nil,
         name: String? = nil,
         reasoningContent: String? = nil,
-        anthropicContentBlocks: [[String: AnyCodableValue]]? = nil
+        contentBlocks: MessageContentBlocks? = nil
     ) -> Self {
         return .assistant(
             AssistantMessageParam(
@@ -469,7 +469,7 @@ extension ChatQuery.ChatCompletionMessageParam {
                 name: name,
                 toolCalls: (toolCalls?.isEmpty ?? true) ? nil : toolCalls,
                 reasoningContent: reasoningContent,
-                anthropicContentBlocks: anthropicContentBlocks
+                contentBlocks: contentBlocks
             )
         )
     }

@@ -192,7 +192,7 @@ final class AnthropicEncodingTests: XCTestCase {
                         content: "ignored-when-blocks-present",
                         toolCalls: nil,
                         reasoningContent: "plan",
-                        anthropicContentBlocks: blocks
+                        contentBlocks: .anthropicOnly(blocks)
                     )
                 ),
                 .tool("sunny", toolCallId: "toolu_1")

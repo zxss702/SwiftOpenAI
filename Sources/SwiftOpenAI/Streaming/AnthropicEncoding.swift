@@ -3,6 +3,7 @@ import Foundation
 struct PreparedAnthropicRequest: Sendable {
     let urlRequest: URLRequest
     let metadata: ChatResponseMetadata
+    let fileBindings: [String: FileBinding]
 }
 
 nonisolated func validateAnthropicParameters(
@@ -45,7 +46,8 @@ nonisolated func makeAnthropicURLRequest(
     topP: Double?,
     thinkLevel: ThinkLevel?,
     extraBody: [String: AnyCodableValue]?,
-    extraHeaders: [String: String]?
+    extraHeaders: [String: String]?,
+    fileBindings: [String: FileBinding] = [:]
 ) throws -> PreparedAnthropicRequest {
     let url = try APIBaseURL.appendMessages(to: modelInfo.baseURL)
     let body = try makeAnthropicRequestBody(
@@ -65,7 +67,12 @@ nonisolated func makeAnthropicURLRequest(
     var request = URLRequest(url: url)
     request.timeoutInterval = 300
     request.httpMethod = "POST"
-    request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+    let httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+    try assertRequestBodyWithinDeepSeekLimitIfNeeded(
+        body: httpBody,
+        baseURL: modelInfo.baseURL
+    )
+    request.httpBody = httpBody
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
     request.setValue(OpenAIConfiguration.defaultUserAgent, forHTTPHeaderField: "User-Agent")
@@ -85,7 +92,8 @@ nonisolated func makeAnthropicURLRequest(
             requestID: nil,
             resolvedModel: modelInfo.modelID,
             resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL)
-        )
+        ),
+        fileBindings: fileBindings
     )
 }
 
@@ -234,6 +242,14 @@ private nonisolated func encodeAnthropicUserContent(
                 encoded.append(["type": "text", "text": text.text])
             case .image(let image):
                 encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+            case .file(let file):
+                encoded.append([
+                    "type": "image",
+                    "source": [
+                        "type": "file",
+                        "file_id": file.fileId
+                    ] as [String: Any]
+                ])
             case .video:
                 encoded.append(["type": "text", "text": "video 不支持"])
             }
@@ -246,7 +262,7 @@ private nonisolated func encodeAnthropicAssistantContent(
     _ assistant: AssistantMessageParam
 ) throws -> [[String: Any]] {
     // Align with anthropic-sdk-python cookbook: echo preserved blocks verbatim.
-    if let blocks = assistant.anthropicContentBlocks, !blocks.isEmpty {
+    if let blocks = assistant.contentBlocks?.anthropic, !blocks.isEmpty {
         let echoed: [[String: Any]] = blocks.compactMap { block in
             let dict = block.toAnyDictionary()
             guard let type = dict["type"] as? String else { return nil }
@@ -291,6 +307,14 @@ private nonisolated func encodeAnthropicToolResultContent(
                 encoded.append(["type": "text", "text": text.text])
             case .image(let image):
                 encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+            case .file(let file):
+                encoded.append([
+                    "type": "image",
+                    "source": [
+                        "type": "file",
+                        "file_id": file.fileId
+                    ] as [String: Any]
+                ])
             case .video:
                 encoded.append(["type": "text", "text": "video 不支持"])
             }
