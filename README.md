@@ -24,6 +24,7 @@
 - ✅ **便捷 API** - 一行代码创建消息和对话
 - ✅ **错误处理** - 完整的错误类型和本地化
 - ✅ **Swift 6 兼容** - 完全支持 Swift 6 的 Main actor 隔离规则
+- ✅ **三条传输线路** - `completions`（Chat Completions）、`responses`（通用 `/responses`）、`codex`（ChatGPT Codex，复用 Responses 协议）
 
 ## 📦 安装
 
@@ -72,6 +73,29 @@ let result = try await sendMessage(
 
 print("✅ 对话完成: \(result.fullText)")
 ```
+
+### 选择传输线路
+
+`sendMessage` 通过 `AIModelInfoValue` 选择线路，消息与工具类型保持不变：
+
+```swift
+// Chat Completions：POST …/chat/completions
+let completions = AIModelInfoValue.completions(
+    .init(token: "sk-...", modelID: "gpt-4")
+)
+
+// 通用 Responses：POST …/responses（Bearer API key，可配任意 host）
+let responses = AIModelInfoValue.responses(
+    .init(token: "sk-...", modelID: "gpt-5")
+)
+
+// Codex：ChatGPT backend，复用 Responses 编解码与 SSE
+let codex = AIModelInfoValue.codex(
+    .init(accessToken: "...", accountID: "...")
+)
+```
+
+`responses` 与 `codex` 共用 Responses 协议内核；差异主要在鉴权头、默认路径，以及 Codex 在无 system 时注入默认 `instructions`。
 
 ### 一行创建对话 🎉
 
@@ -390,7 +414,7 @@ if let toolCalls = message.toolCalls {
 
 ## 🤖 AI 思考过程
 
-通过统一的 `thinkLevel` 控制思考强度（Codex 与 chat/completions 共用）：
+通过统一的 `thinkLevel` 控制思考强度（`completions` / `responses` / Codex 三条线路共用）：
 
 ```swift
 public enum ThinkLevel: String, Codable {

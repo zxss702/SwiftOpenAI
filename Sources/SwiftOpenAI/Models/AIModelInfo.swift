@@ -4,10 +4,11 @@ import Foundation
 
 public enum AIModelWireAPI: String, Codable, Sendable, Hashable {
     case completions
+    case responses
     case codexResponses
 }
 
-/// 统一的思考强度等级（Codex 与 chat/completions 共用）
+/// 统一的思考强度等级（completions / responses / Codex 共用）
 ///
 /// - `none`：关闭思考
 /// - 其余等级：开启思考，并由 Provider 映射到对应线格式
@@ -30,10 +31,13 @@ public enum ThinkLevel: String, Codable, Sendable, Hashable, CaseIterable {
 
 /// AI 模型配置信息
 ///
-/// 对外统一暴露为一个值类型，但内部区分 `chat/completions`
-/// 与 Codex `responses` 两条传输线路。
+/// 对外统一暴露为一个值类型，内部区分三条传输线路：
+/// - `chat/completions`
+/// - 通用 `/responses`
+/// - Codex（ChatGPT backend，复用 Responses 协议）
 public enum AIModelInfoValue: Sendable, Codable, Hashable {
     case completions(CompletionsInfo)
+    case responses(ResponsesInfo)
     case codex(CodexInfo)
 
     /// 兼容旧的 completions 初始化方式。
@@ -61,6 +65,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         switch self {
         case .completions:
             return .completions
+        case .responses:
+            return .responses
         case .codex:
             return .codexResponses
         }
@@ -69,6 +75,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
     public var modelID: String {
         switch self {
         case .completions(let info):
+            return info.modelID
+        case .responses(let info):
             return info.modelID
         case .codex(let info):
             return info.modelID
@@ -79,6 +87,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         switch self {
         case .completions(let info):
             return info.host
+        case .responses(let info):
+            return info.host
         case .codex(let info):
             return info.host
         }
@@ -87,6 +97,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
     public var port: Int? {
         switch self {
         case .completions(let info):
+            return info.port
+        case .responses(let info):
             return info.port
         case .codex(let info):
             return info.port
@@ -97,6 +109,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         switch self {
         case .completions(let info):
             return info.scheme
+        case .responses(let info):
+            return info.scheme
         case .codex(let info):
             return info.scheme
         }
@@ -106,15 +120,19 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         switch self {
         case .completions(let info):
             return info.basePath
+        case .responses(let info):
+            return info.basePath
         case .codex(let info):
             return info.basePath
         }
     }
 
-    /// completions 路径返回 API key，codex 路径返回 access token。
+    /// completions / responses 返回 API key，codex 返回 access token。
     public var token: String {
         switch self {
         case .completions(let info):
+            return info.token
+        case .responses(let info):
             return info.token
         case .codex(let info):
             return info.accessToken
@@ -124,6 +142,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
     public var resolvedBasePath: String {
         switch self {
         case .completions(let info):
+            return info.basePath ?? "/v1"
+        case .responses(let info):
             return info.basePath ?? "/v1"
         case .codex(let info):
             return info.basePath
@@ -144,9 +164,21 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         return info
     }
 
+    public var responsesInfo: ResponsesInfo? {
+        guard case .responses(let info) = self else { return nil }
+        return info
+    }
+
     public var codexInfo: CodexInfo? {
         guard case .codex(let info) = self else { return nil }
         return info
+    }
+
+    public var isResponses: Bool {
+        if case .responses = self {
+            return true
+        }
+        return false
     }
 
     public var isCodex: Bool {
@@ -198,6 +230,58 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
             components.port = port
             components.path = basePath ?? "/v1"
             return components.url
+        }
+    }
+
+    /// 通用 OpenAI Responses API（`/responses`）配置
+    public struct ResponsesInfo: Sendable, Codable, Hashable {
+        /// API 访问令牌
+        public let token: String
+
+        /// API 主机地址
+        public let host: String
+
+        /// API 端口号
+        public let port: Int?
+
+        /// URL 协议方案
+        public let scheme: String
+
+        /// API 基础路径（默认 `/v1`，请求时追加 `/responses`）
+        public let basePath: String?
+
+        /// 模型标识符
+        public let modelID: String
+
+        public init(
+            token: String,
+            host: String = "api.openai.com",
+            port: Int? = nil,
+            scheme: String = "https",
+            basePath: String? = nil,
+            modelID: String = "gpt-4"
+        ) {
+            self.token = token
+            self.host = host
+            self.port = port
+            self.scheme = scheme
+            self.basePath = basePath
+            self.modelID = modelID
+        }
+
+        public var baseURL: URL? {
+            var components = URLComponents()
+            components.scheme = scheme
+            components.host = host
+            components.port = port
+            components.path = basePath ?? "/v1"
+            return components.url
+        }
+
+        public var defaultHeaders: [String: String] {
+            [
+                "Authorization": "Bearer \(token)"
+            ]
         }
     }
 
