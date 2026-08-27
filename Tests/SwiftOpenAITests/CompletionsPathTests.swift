@@ -22,7 +22,7 @@ final class CompletionsPathTests: XCTestCase {
         XCTAssertEqual(prebuilt.urlRequest.url?.path, "/api/coding/paas/v4/chat/completions")
     }
 
-    func testDeepSeekStrictToolSwitchesToBeta() async throws {
+    func testDeepSeekExplicitBetaBaseURLKeepsBetaPath() async throws {
         let query = ChatQuery(
             messages: [.user("hello")],
             model: "deepseek-v4-pro",
@@ -36,13 +36,19 @@ final class CompletionsPathTests: XCTestCase {
                 baseURL: "https://api.deepseek.com"
             )
         )
-        XCTAssertEqual(defaultPrepared.urlRequest.url?.path, "/beta/chat/completions")
+        XCTAssertEqual(defaultPrepared.urlRequest.url?.path, "/v1/chat/completions")
 
         let v1Prepared = try await createChatRequest(
             query: query,
             configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
-        XCTAssertEqual(v1Prepared.urlRequest.url?.path, "/beta/chat/completions")
+        XCTAssertEqual(v1Prepared.urlRequest.url?.path, "/v1/chat/completions")
+
+        let betaPrepared = try await createChatRequest(
+            query: query,
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/beta")
+        )
+        XCTAssertEqual(betaPrepared.urlRequest.url?.path, "/beta/chat/completions")
 
         let customPrepared = try await createChatRequest(
             query: query,

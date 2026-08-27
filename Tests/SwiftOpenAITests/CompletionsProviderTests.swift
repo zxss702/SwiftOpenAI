@@ -172,7 +172,20 @@ final class CompletionsProviderTests: XCTestCase {
         let deepseekTools = try XCTUnwrap(
             (try TestFixtures.requestBody(from: deepseek.urlRequest)["tools"] as? [[String: Any]])
         )
-        XCTAssertEqual((deepseekTools[0]["function"] as? [String: Any])?["strict"] as? Bool, true)
+        XCTAssertNil((deepseekTools[0]["function"] as? [String: Any])?["strict"])
+
+        let deepseekBeta = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("hello")],
+                model: "deepseek-v4-pro",
+                tools: [TestFixtures.weatherTool(strict: true)]
+            ),
+            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/beta")
+        )
+        let deepseekBetaTools = try XCTUnwrap(
+            (try TestFixtures.requestBody(from: deepseekBeta.urlRequest)["tools"] as? [[String: Any]])
+        )
+        XCTAssertEqual((deepseekBetaTools[0]["function"] as? [String: Any])?["strict"] as? Bool, true)
     }
 
     func testUnsupportedMultimediaDowngradesToPlaintext() async throws {
