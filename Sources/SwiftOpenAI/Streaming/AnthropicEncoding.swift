@@ -103,10 +103,16 @@ nonisolated func makeAnthropicRequestBody(
     extraBody: [String: AnyCodableValue]?
 ) throws -> [String: Any] {
     let prepared = try prepareAnthropicPrompt(messages)
+    let thinkingEnabled = thinkLevel != nil && thinkLevel != ThinkLevel.none
+    let (maxTokens, thinkingConfig) = resolvedAnthropicMaxTokensAndThinking(
+        maxCompletionTokens: maxCompletionTokens,
+        thinkLevel: thinkLevel
+    )
+
     var body: [String: Any] = [
         "model": modelID,
         "messages": prepared.messages,
-        "max_tokens": maxCompletionTokens ?? 4096,
+        "max_tokens": maxTokens,
         "stream": true
     ]
 
@@ -122,20 +128,25 @@ nonisolated func makeAnthropicRequestBody(
     if let stop {
         body["stop_sequences"] = encodeAnthropicStop(stop)
     }
+
+    let effectiveToolChoice = resolveAnthropicToolChoice(
+        toolChoice,
+        thinkingEnabled: thinkingEnabled
+    )
     if let tools, !tools.isEmpty {
         body["tools"] = tools.map(encodeAnthropicTool)
         body["tool_choice"] = encodeAnthropicToolChoice(
-            toolChoice ?? .auto,
+            effectiveToolChoice ?? .auto,
             disableParallelToolUse: parallelToolCalls == false
         )
-    } else if let toolChoice {
+    } else if let effectiveToolChoice {
         body["tool_choice"] = encodeAnthropicToolChoice(
-            toolChoice,
+            effectiveToolChoice,
             disableParallelToolUse: parallelToolCalls == false
         )
     }
-    if let thinking = encodeAnthropicThinking(thinkLevel: thinkLevel) {
-        body["thinking"] = thinking
+    if let thinkingConfig {
+        body["thinking"] = thinkingConfig
     }
 
     for (key, value) in extraBody ?? [:] {
@@ -153,27 +164,41 @@ private nonisolated func prepareAnthropicPrompt(
 ) throws -> (system: String?, messages: [[String: Any]]) {
     var systemParts: [String] = []
     var encodedMessages: [[String: Any]] = []
+    var pendingToolResults: [[String: Any]] = []
+
+    func flushToolResults() {
+        guard !pendingToolResults.isEmpty else { return }
+        encodedMessages.append([
+            "role": "user",
+            "content": pendingToolResults
+        ])
+        pendingToolResults.removeAll(keepingCapacity: true)
+    }
 
     for message in messages {
         switch message {
         case .system(let systemMessage):
+            flushToolResults()
             guard case .textContent(let text) = systemMessage.content else { continue }
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 systemParts.append(trimmed)
             }
         case .reminder(let reminderMessage):
+            flushToolResults()
             guard case .textContent(let text) = reminderMessage.content else { continue }
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 systemParts.append(trimmed)
             }
         case .user(let userMessage):
+            flushToolResults()
             encodedMessages.append([
                 "role": "user",
                 "content": try encodeAnthropicUserContent(userMessage.content)
             ])
         case .assistant(let assistantMessage):
+            flushToolResults()
             let content = try encodeAnthropicAssistantContent(assistantMessage)
             if !content.isEmpty {
                 encodedMessages.append([
@@ -182,18 +207,14 @@ private nonisolated func prepareAnthropicPrompt(
                 ])
             }
         case .tool(let toolMessage):
-            encodedMessages.append([
-                "role": "user",
-                "content": [
-                    [
-                        "type": "tool_result",
-                        "tool_use_id": toolMessage.toolCallId,
-                        "content": try encodeAnthropicToolResultContent(toolMessage.content)
-                    ] as [String: Any]
-                ]
+            pendingToolResults.append([
+                "type": "tool_result",
+                "tool_use_id": toolMessage.toolCallId,
+                "content": try encodeAnthropicToolResultContent(toolMessage.content)
             ])
         }
     }
+    flushToolResults()
 
     let system = systemParts.isEmpty ? nil : systemParts.joined(separator: "\n\n")
     return (system, encodedMessages)
@@ -224,6 +245,23 @@ private nonisolated func encodeAnthropicUserContent(
 private nonisolated func encodeAnthropicAssistantContent(
     _ assistant: AssistantMessageParam
 ) throws -> [[String: Any]] {
+    // Align with anthropic-sdk-python cookbook: echo preserved blocks verbatim.
+    if let blocks = assistant.anthropicContentBlocks, !blocks.isEmpty {
+        let echoed: [[String: Any]] = blocks.compactMap { block in
+            let dict = block.toAnyDictionary()
+            guard let type = dict["type"] as? String else { return nil }
+            switch type {
+            case "thinking", "redacted_thinking", "tool_use", "text":
+                return dict
+            default:
+                return dict
+            }
+        }
+        if !echoed.isEmpty {
+            return echoed
+        }
+    }
+
     var content: [[String: Any]] = []
     if let text = assistant.content, !text.isEmpty {
         content.append(["type": "text", "text": text])
@@ -326,17 +364,48 @@ private nonisolated func encodeAnthropicToolChoice(
     return encoded
 }
 
+private nonisolated func resolveAnthropicToolChoice(
+    _ toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
+    thinkingEnabled: Bool
+) -> ChatQuery.ChatCompletionFunctionCallOptionParam? {
+    guard let toolChoice else { return nil }
+    guard thinkingEnabled else { return toolChoice }
+    // Manual extended thinking only supports tool_choice auto/none.
+    switch toolChoice {
+    case .required, .function:
+        return .auto
+    case .none, .auto:
+        return toolChoice
+    }
+}
+
+private nonisolated func resolvedAnthropicMaxTokensAndThinking(
+    maxCompletionTokens: Int?,
+    thinkLevel: ThinkLevel?
+) -> (maxTokens: Int, thinking: [String: Any]?) {
+    let requested = maxCompletionTokens ?? 4096
+    guard let thinkLevel else {
+        return (requested, nil)
+    }
+    if thinkLevel == .none {
+        return (requested, ["type": "disabled"])
+    }
+    // Official: budget_tokens ≥ 1024 and strictly less than max_tokens.
+    let budget = max(1024, anthropicBudgetTokens(for: thinkLevel))
+    let maxTokens = max(requested, budget + 4096)
+    return (
+        maxTokens,
+        [
+            "type": "enabled",
+            "budget_tokens": budget
+        ]
+    )
+}
+
 private nonisolated func encodeAnthropicThinking(
     thinkLevel: ThinkLevel?
 ) -> [String: Any]? {
-    guard let thinkLevel else { return nil }
-    if thinkLevel == .none {
-        return ["type": "disabled"]
-    }
-    return [
-        "type": "enabled",
-        "budget_tokens": anthropicBudgetTokens(for: thinkLevel)
-    ]
+    resolvedAnthropicMaxTokensAndThinking(maxCompletionTokens: nil, thinkLevel: thinkLevel).thinking
 }
 
 private nonisolated func anthropicBudgetTokens(for thinkLevel: ThinkLevel) -> Int {

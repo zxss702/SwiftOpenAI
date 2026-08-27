@@ -103,12 +103,15 @@ final class AnthropicEncodingTests: XCTestCase {
         XCTAssertNotNil(tools.first?["input_schema"])
 
         let toolChoice = try XCTUnwrap(body["tool_choice"] as? [String: Any])
-        XCTAssertEqual(toolChoice["type"] as? String, "any")
+        // thinking enabled: forced tool_choice is coerced to auto
+        XCTAssertEqual(toolChoice["type"] as? String, "auto")
         XCTAssertEqual(toolChoice["disable_parallel_tool_use"] as? Bool, true)
 
         let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
         XCTAssertEqual(thinking["type"] as? String, "enabled")
         XCTAssertEqual(thinking["budget_tokens"] as? Int, 8192)
+        // budget 8192 → max_tokens at least budget + 4096
+        XCTAssertEqual(body["max_tokens"] as? Int, 12288)
 
         XCTAssertEqual(body["stop_sequences"] as? [String], ["STOP"])
         XCTAssertEqual((body["metadata"] as? [String: Any])?["source"] as? String, "unit-test")
@@ -142,6 +145,108 @@ final class AnthropicEncodingTests: XCTestCase {
             extraBody: nil
         )
         XCTAssertEqual((body["thinking"] as? [String: Any])?["type"] as? String, "disabled")
+        XCTAssertEqual(body["max_tokens"] as? Int, 4096)
+    }
+
+    func testThinkingRaisesMaxTokensAboveBudget() throws {
+        let body = try makeAnthropicRequestBody(
+            modelID: "claude-sonnet-4-5",
+            messages: [.user("hi")],
+            maxCompletionTokens: nil,
+            parallelToolCalls: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: nil,
+            topP: nil,
+            thinkLevel: .medium,
+            extraBody: nil
+        )
+        let budget = try XCTUnwrap((body["thinking"] as? [String: Any])?["budget_tokens"] as? Int)
+        let maxTokens = try XCTUnwrap(body["max_tokens"] as? Int)
+        XCTAssertEqual(budget, 8192)
+        XCTAssertGreaterThan(maxTokens, budget)
+        XCTAssertEqual(maxTokens, budget + 4096)
+    }
+
+    func testEchoesAnthropicContentBlocksVerbatim() throws {
+        let blocks: [[String: AnyCodableValue]] = [
+            [
+                "type": .string("thinking"),
+                "thinking": .string("plan"),
+                "signature": .string("sig_abc")
+            ],
+            [
+                "type": .string("tool_use"),
+                "id": .string("toolu_1"),
+                "name": .string("get_weather"),
+                "input": .object(["city": .string("Paris")])
+            ]
+        ]
+        let body = try makeAnthropicRequestBody(
+            modelID: "claude-sonnet-4-5",
+            messages: [
+                .user("weather?"),
+                .assistant(
+                    AssistantMessageParam(
+                        content: "ignored-when-blocks-present",
+                        toolCalls: nil,
+                        reasoningContent: "plan",
+                        anthropicContentBlocks: blocks
+                    )
+                ),
+                .tool("sunny", toolCallId: "toolu_1")
+            ],
+            maxCompletionTokens: 2048,
+            parallelToolCalls: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: [TestFixtures.weatherTool()],
+            topP: nil,
+            thinkLevel: .low,
+            extraBody: nil
+        )
+
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let assistantContent = try XCTUnwrap(messages[1]["content"] as? [[String: Any]])
+        XCTAssertEqual(assistantContent.first?["type"] as? String, "thinking")
+        XCTAssertEqual(assistantContent.first?["signature"] as? String, "sig_abc")
+        XCTAssertEqual(assistantContent.last?["type"] as? String, "tool_use")
+    }
+
+    func testMergesConsecutiveToolResultsIntoOneUserMessage() throws {
+        let body = try makeAnthropicRequestBody(
+            modelID: "claude-sonnet-4-5",
+            messages: [
+                .user("hi"),
+                .assistant(
+                    "",
+                    toolCalls: [
+                        .init(id: "t1", function: .init(name: "a", arguments: "{}")),
+                        .init(id: "t2", function: .init(name: "b", arguments: "{}"))
+                    ]
+                ),
+                .tool("r1", toolCallId: "t1"),
+                .tool("r2", toolCallId: "t2")
+            ],
+            maxCompletionTokens: 1024,
+            parallelToolCalls: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: nil,
+            topP: nil,
+            thinkLevel: ThinkLevel.none,
+            extraBody: nil
+        )
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, 3)
+        XCTAssertEqual(messages[2]["role"] as? String, "user")
+        let content = try XCTUnwrap(messages[2]["content"] as? [[String: Any]])
+        XCTAssertEqual(content.count, 2)
+        XCTAssertEqual(content[0]["tool_use_id"] as? String, "t1")
+        XCTAssertEqual(content[1]["tool_use_id"] as? String, "t2")
     }
 
     func testValidateRejectsUnsupportedParameters() {
