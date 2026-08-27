@@ -23,5 +23,9 @@ final class OpenAIErrorTests: XCTestCase {
             OpenAIError.streamingError("cut").errorDescription,
             "流式传输错误: cut"
         )
+        XCTAssertEqual(
+            OpenAIError.requestBodyTooLarge("big").errorDescription,
+            "请求体过大: big"
+        )
     }
 }

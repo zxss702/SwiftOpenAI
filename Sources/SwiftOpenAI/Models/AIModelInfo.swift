@@ -333,6 +333,9 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
     /// 参数组合不受支持
     case unsupportedParameterCombination(String)
 
+    /// 请求体超过厂商字节上限（如 DeepSeek 48 MiB）
+    case requestBodyTooLarge(String)
+
     /// 错误的本地化描述
     public var errorDescription: String? {
         switch self {
@@ -354,6 +357,8 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
             return "厂商能力不支持: \(message)"
         case .unsupportedParameterCombination(let message):
             return "参数组合不支持: \(message)"
+        case .requestBodyTooLarge(let message):
+            return "请求体过大: \(message)"
         }
     }
 }

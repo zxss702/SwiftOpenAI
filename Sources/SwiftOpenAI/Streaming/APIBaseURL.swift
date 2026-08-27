@@ -106,6 +106,16 @@ enum APIBaseURL {
         return url
     }
 
+    /// Files: empty path → `/v1/files`; else append `/files` unless already present.
+    static func appendFiles(to raw: String) throws -> URL {
+        try append(
+            to: raw,
+            emptyPathReplacement: "/v1/files",
+            suffix: "/files",
+            alreadyHasSuffix: { $0 == "/files" || $0.hasSuffix("/files") }
+        )
+    }
+
     private static func components(from raw: String) throws -> URLComponents {
         let url = try parse(raw)
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

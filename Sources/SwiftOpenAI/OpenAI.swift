@@ -180,7 +180,7 @@ nonisolated func createChatCompletionEnvelope(
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await responseBodyString(from: response.body)
         let statusCode = Int(response.status.code)
-        throw OpenAIError.invalidResponse(responseBody, code: statusCode)
+        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
     }
 
     do {
@@ -209,7 +209,7 @@ nonisolated func createChatStreamEnvelopeStream(
                 guard (200...299).contains(Int(response.status.code)) else {
                     let responseBody = try await responseBodyString(from: response.body)
                     let statusCode = Int(response.status.code)
-                    throw OpenAIError.invalidResponse(responseBody, code: statusCode)
+                    throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
                 }
 
                 let metadata = preparedRequest.metadata.withRequestID(
@@ -321,7 +321,7 @@ final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sen
         
         if !(200...299).contains(statusCode) {
             let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
-            continuation.finish(throwing: OpenAIError.invalidResponse(responseBody, code: statusCode))
+            continuation.finish(throwing: mapDeepSeekBodyLimitError(message: responseBody, code: statusCode))
             return
         }
         
@@ -361,7 +361,7 @@ nonisolated func createChatCompletionEnvelope(
             }
             guard (200...299).contains(httpResponse.statusCode) else {
                 let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
-                continuation.resume(throwing: OpenAIError.invalidResponse(responseBody, code: httpResponse.statusCode))
+                continuation.resume(throwing: mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode))
                 return
             }
 
