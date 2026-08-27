@@ -24,7 +24,7 @@
 - ✅ **便捷 API** - 一行代码创建消息和对话
 - ✅ **错误处理** - 完整的错误类型和本地化
 - ✅ **Swift 6 兼容** - 完全支持 Swift 6 的 Main actor 隔离规则
-- ✅ **三条传输线路** - `completions`（Chat Completions）、`responses`（通用 `/responses`）、`codex`（ChatGPT Codex，复用 Responses 协议）
+- ✅ **四条传输线路** - `completions`（Chat Completions）、`responses`（通用 `/responses`）、`codex`（ChatGPT Codex）、`anthropic`（Anthropic Messages `/messages`）
 
 ## 📦 安装
 
@@ -81,21 +81,26 @@ print("✅ 对话完成: \(result.fullText)")
 ```swift
 // Chat Completions：POST …/chat/completions
 let completions = AIModelInfoValue.completions(
-    .init(token: "sk-...", modelID: "gpt-4")
+    .init(token: "sk-...", baseURL: "https://api.openai.com/v1", modelID: "gpt-4")
 )
 
-// 通用 Responses：POST …/responses（Bearer API key，可配任意 host）
+// 通用 Responses：POST …/responses（Bearer API key，可配任意 baseURL）
 let responses = AIModelInfoValue.responses(
-    .init(token: "sk-...", modelID: "gpt-5")
+    .init(token: "sk-...", baseURL: "https://api.deepseek.com", modelID: "gpt-5")
 )
 
 // Codex：ChatGPT backend，复用 Responses 编解码与 SSE
 let codex = AIModelInfoValue.codex(
     .init(accessToken: "...", accountID: "...")
 )
+
+// Anthropic Messages：POST …/v1/messages（仍传 OpenAI 形状的 messages/tools）
+let anthropic = AIModelInfoValue.anthropic(
+    .init(token: "…", baseURL: "https://api.deepseek.com/anthropic", modelID: "claude-sonnet-4-5")
+)
 ```
 
-`responses` 与 `codex` 共用 Responses 协议内核；差异主要在鉴权头、默认路径，以及 Codex 在无 system 时注入默认 `instructions`。
+`responses` 与 `codex` 共用 Responses 协议内核；差异主要在鉴权头、默认路径，以及 Codex 在无 system 时注入默认 `instructions`。`anthropic` 在 Encoding 层把 Chat Completions 消息映射到 Anthropic `/v1/messages`。端点统一用完整 `baseURL`（如 `https://api.deepseek.com`、`http://localhost:8080`），库再按线路追加资源路径。
 
 ### 一行创建对话 🎉
 
@@ -262,10 +267,7 @@ let messages: [OpenAIMessage] = [
 // 使用 SiliconFlow 或其他兼容 API
 let modelInfo = AIModelInfoValue(
     token: "your-api-key",
-    host: "api.siliconflow.cn",
-    port: nil,
-    scheme: "https",
-    basePath: "/v1",
+    baseURL: "https://api.siliconflow.cn/v1",
     modelID: "Qwen/Qwen2.5-7B-Instruct"
 )
 ```
@@ -364,7 +366,7 @@ struct CalculatorTool {
 let result = try await sendMessage(
     modelInfo: AIModelInfoValue(
         token: "your-api-token",
-        host: "api.openai.com",
+        baseURL: "https://api.openai.com/v1",
         modelID: "gpt-4-turbo"
     ),
     messages: [.user("北京天气怎么样？然后帮我计算 15 + 27")],
@@ -414,7 +416,7 @@ if let toolCalls = message.toolCalls {
 
 ## 🤖 AI 思考过程
 
-通过统一的 `thinkLevel` 控制思考强度（`completions` / `responses` / Codex 三条线路共用）：
+通过统一的 `thinkLevel` 控制思考强度（四条线路共用；Anthropic 映射为 `thinking` / `budget_tokens`）：
 
 ```swift
 public enum ThinkLevel: String, Codable {

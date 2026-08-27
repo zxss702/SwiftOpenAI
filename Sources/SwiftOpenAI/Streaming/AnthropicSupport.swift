@@ -10,13 +10,13 @@ import NIOHTTP1
 
 #if !os(Windows)
 
-private let responsesRequestTimeout: TimeAmount = .seconds(300)
-private let responsesBodyLimit = 64 * 1024 * 1024
+private let anthropicRequestTimeout: TimeAmount = .seconds(300)
+private let anthropicBodyLimit = 64 * 1024 * 1024
 
 #endif
 
-nonisolated func sendResponsesMessage(
-    modelInfo: AIModelInfoValue.ResponsesInfo,
+nonisolated func sendAnthropicMessage(
+    modelInfo: AIModelInfoValue.AnthropicInfo,
     messages: [ChatQuery.ChatCompletionMessageParam],
     frequencyPenalty: Double? = nil,
     maxCompletionTokens: Int? = nil,
@@ -36,28 +36,20 @@ nonisolated func sendResponsesMessage(
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
-    try validateResponsesParameters(
+    try validateAnthropicParameters(
         prediction: prediction,
         n: n,
+        frequencyPenalty: frequencyPenalty,
+        presencePenalty: presencePenalty,
         user: user,
-        pathLabel: "Responses"
+        responseFormat: responseFormat
     )
 
-    let prepared = try makeResponsesURLRequest(
-        config: ResponsesRequestConfig(
-            modelID: modelInfo.modelID,
-            baseURL: try APIBaseURL.parse(modelInfo.baseURL),
-            resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL),
-            providerName: "openai-responses",
-            defaultHeaders: modelInfo.defaultHeaders,
-            requireDefaultInstructions: false
-        ),
+    let prepared = try makeAnthropicURLRequest(
+        modelInfo: modelInfo,
         messages: messages,
-        frequencyPenalty: frequencyPenalty,
         maxCompletionTokens: maxCompletionTokens,
         parallelToolCalls: parallelToolCalls,
-        presencePenalty: presencePenalty,
-        responseFormat: responseFormat,
         stop: stop,
         temperature: temperature,
         toolChoice: toolChoice,
@@ -68,23 +60,23 @@ nonisolated func sendResponsesMessage(
         extraHeaders: extraHeaders
     )
 
-    return try await executeResponsesStream(
+    return try await executeAnthropicStream(
         preparedRequest: prepared,
         action: action
     )
 }
 
-nonisolated func executeResponsesStream(
-    preparedRequest: PreparedResponsesRequest,
+nonisolated func executeAnthropicStream(
+    preparedRequest: PreparedAnthropicRequest,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
 #if !os(Windows)
-    try await executeResponsesStreamWithHTTPClient(
+    try await executeAnthropicStreamWithHTTPClient(
         preparedRequest: preparedRequest,
         action: action
     )
 #else
-    try await executeResponsesStreamWithURLSession(
+    try await executeAnthropicStreamWithURLSession(
         preparedRequest: preparedRequest,
         action: action
     )
@@ -93,28 +85,28 @@ nonisolated func executeResponsesStream(
 
 #if !os(Windows)
 
-private nonisolated func executeResponsesStreamWithHTTPClient(
-    preparedRequest: PreparedResponsesRequest,
+private nonisolated func executeAnthropicStreamWithHTTPClient(
+    preparedRequest: PreparedAnthropicRequest,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
-    let request = try makeHTTPClientRequest(from: preparedRequest.urlRequest)
+    let request = try makeAnthropicHTTPClientRequest(from: preparedRequest.urlRequest)
     let actorHelper = OpenAISendMessageValueHelper()
-    let response = try await HTTPClient.shared.execute(request, timeout: responsesRequestTimeout)
+    let response = try await HTTPClient.shared.execute(request, timeout: anthropicRequestTimeout)
 
     guard (200...299).contains(Int(response.status.code)) else {
-        let responseBody = try await responsesBodyString(from: response.body)
+        let responseBody = try await anthropicBodyString(from: response.body)
         throw OpenAIError.invalidResponse(responseBody, code: Int(response.status.code))
     }
 
     var lastSendTime = Date().timeIntervalSince1970
-    var state = ResponsesStreamState()
+    var state = AnthropicStreamState()
     var metadata = preparedRequest.metadata.withRequestID(
         ProviderResponseNormalizer.requestID(from: response.headers)
     )
 
     for try await part in response.body {
         try Task.checkCancellation()
-        try await processResponsesSSEBytes(
+        try await processAnthropicSSEBytes(
             part.sseDataBytes,
             actorHelper: actorHelper,
             state: &state,
@@ -129,7 +121,7 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         }
     }
 
-    try await processResponsesSSEBytes(
+    try await processAnthropicSSEBytes(
         Data(),
         actorHelper: actorHelper,
         state: &state,
@@ -154,7 +146,7 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
     )
 }
 
-private nonisolated func makeHTTPClientRequest(from urlRequest: URLRequest) throws -> HTTPClientRequest {
+private nonisolated func makeAnthropicHTTPClientRequest(from urlRequest: URLRequest) throws -> HTTPClientRequest {
     guard let url = urlRequest.url else {
         throw OpenAIError.invalidURL
     }
@@ -175,21 +167,21 @@ private nonisolated func makeHTTPClientRequest(from urlRequest: URLRequest) thro
     return request
 }
 
-private nonisolated func responsesCollectBodyData(
+private nonisolated func anthropicCollectBodyData(
     from body: HTTPClientResponse.Body?
 ) async throws -> Data {
     guard let body else { return Data() }
-    let buffer = try await body.collect(upTo: responsesBodyLimit)
+    let buffer = try await body.collect(upTo: anthropicBodyLimit)
     guard let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) else {
         return Data()
     }
     return Data(bytes)
 }
 
-private nonisolated func responsesBodyString(
+private nonisolated func anthropicBodyString(
     from body: HTTPClientResponse.Body?
 ) async throws -> String {
-    let data = try await responsesCollectBodyData(from: body)
+    let data = try await anthropicCollectBodyData(from: body)
     return String(data: data, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
 }
 

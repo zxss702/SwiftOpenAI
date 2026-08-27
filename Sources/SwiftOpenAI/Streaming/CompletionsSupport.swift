@@ -26,10 +26,7 @@ nonisolated func sendCompletionsMessage(
 
     let configuration = OpenAIConfiguration(
         token: modelInfo.token,
-        host: modelInfo.host,
-        port: modelInfo.port,
-        scheme: modelInfo.scheme,
-        basePath: modelInfo.basePath,
+        baseURL: modelInfo.baseURL,
         extraHeaders: extraHeaders
     )
 
@@ -56,12 +53,13 @@ nonisolated func sendCompletionsMessage(
         extraBody: extraBody
     )
 
+    let host = APIBaseURL.host(of: modelInfo.baseURL) ?? ""
     var lastSendTime = Date().timeIntervalSince1970
     var responseMetadata = ChatResponseMetadata(
-        providerName: ProviderFamilyResolver.resolve(host: modelInfo.host).providerName,
+        providerName: ProviderFamilyResolver.resolve(host: host).providerName,
         requestID: nil,
         resolvedModel: modelInfo.modelID,
-        resolvedBasePath: modelInfo.basePath ?? "/v1"
+        resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL)
     )
 
     for try await envelope in openAI.chatsStreamEnvelope(query: query) {
@@ -145,10 +143,7 @@ nonisolated func sendCompletionsMessageSync(
 ) async throws -> OpenAIChatResult {
     let configuration = OpenAIConfiguration(
         token: modelInfo.token,
-        host: modelInfo.host,
-        port: modelInfo.port,
-        scheme: modelInfo.scheme,
-        basePath: modelInfo.basePath,
+        baseURL: modelInfo.baseURL,
         extraHeaders: extraHeaders
     )
 

@@ -28,15 +28,11 @@ nonisolated func sendCodexResponsesMessage(
         pathLabel: "Codex responses"
     )
 
-    guard let baseURL = modelInfo.baseURL else {
-        throw OpenAIError.invalidURL
-    }
-
     let prepared = try makeResponsesURLRequest(
         config: ResponsesRequestConfig(
             modelID: modelInfo.modelID,
-            baseURL: baseURL,
-            resolvedBasePath: modelInfo.basePath,
+            baseURL: try APIBaseURL.parse(modelInfo.baseURL),
+            resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL),
             providerName: "openai-codex",
             defaultHeaders: modelInfo.defaultHeaders,
             requireDefaultInstructions: true

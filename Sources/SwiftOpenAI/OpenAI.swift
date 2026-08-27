@@ -482,91 +482,62 @@ nonisolated private func processSSELine(
 /// ## Topics
 ///
 /// ### 创建配置
-/// - ``init(token:host:port:scheme:basePath:organizationID:extraBody:extraHeaders:)``
+/// - ``init(token:baseURL:organizationID:extraBody:extraHeaders:)``
 ///
 /// ### 默认配置
 /// - ``default``
 ///
 /// ### 配置属性
 /// - ``token``
-/// - ``host``
-/// - ``port``
-/// - ``scheme``
-/// - ``basePath``
+/// - ``baseURL``
 /// - ``organizationID``
 /// - ``extraBody``
 /// - ``extraHeaders``
-/// - ``baseURL``
+/// - ``resolvedURL``
 ///
 public struct OpenAIConfiguration : Sendable {
     /// API 访问令牌
     public let token: String
-    
-    /// API 主机地址
-    public let host: String
-    
-    /// API 端口号
-    public let port: Int?
-    
-    /// URL 协议方案
-    public let scheme: String
-    
-    /// API 基础路径
-    public let basePath: String?
-    
+
+    /// API 根 URL（默认 `https://api.openai.com/v1`，请求时追加 `/chat/completions`）
+    public let baseURL: String
+
     /// 组织 ID（可选）
     public let organizationID: String?
-    
+
     /// 额外的请求体参数
     public let extraBody: [String: AnyCodableValue]?
-    
+
     /// 额外的 HTTP 请求头
     public let extraHeaders: [String: String]?
-    
+
     /// 初始化 OpenAI 配置
     ///
     /// - Parameters:
     ///   - token: API 访问令牌
-    ///   - host: API 主机地址，默认为 "api.openai.com"
-    ///   - port: API 端口号，默认为 nil
-    ///   - scheme: URL 协议方案，默认为 "https"
-    ///   - basePath: API 基础路径，默认为 nil（使用 "/v1"）
+    ///   - baseURL: API 根 URL，默认为 `https://api.openai.com/v1`
     ///   - organizationID: 组织 ID，默认为 nil
     ///   - extraBody: 额外的请求体参数，默认为 nil
     ///   - extraHeaders: 额外的 HTTP 请求头，默认为 nil
     public init(
         token: String,
-        host: String = "api.openai.com",
-        port: Int? = nil,
-        scheme: String = "https",
-        basePath: String? = nil,
+        baseURL: String = "https://api.openai.com/v1",
         organizationID: String? = nil,
         extraBody: [String: AnyCodableValue]? = nil,
         extraHeaders: [String: String]? = nil
     ) {
         self.token = token
-        self.host = host
-        self.port = port
-        self.scheme = scheme
-        self.basePath = basePath
+        self.baseURL = APIBaseURL.normalize(baseURL)
         self.organizationID = organizationID
         self.extraBody = extraBody
         self.extraHeaders = extraHeaders
     }
-    
-    /// 完整的 API 基础 URL
-    public var baseURL: URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = host
-        components.port = port
-        
-        let pathPrefix = basePath ?? "/v1"
-        components.path = pathPrefix
-        
-        return components.url
+
+    /// 解析后的配置根 URL
+    public var resolvedURL: URL? {
+        try? APIBaseURL.parse(baseURL)
     }
-    
+
     /// 默认配置（从环境变量 OPENAI_API_KEY 读取令牌）
     public static let `default` = OpenAIConfiguration(
         token: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""

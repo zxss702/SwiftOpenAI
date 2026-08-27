@@ -47,7 +47,7 @@ import SwiftOpenAI
 func exampleToolImageUsage() async throws {
     let openAI = OpenAI(configuration: OpenAIConfiguration(
         token: "your-api-key",
-        host: "api.openai.com"
+        baseURL: "https://api.openai.com/v1"
     ))
     
     // 假设有一个工具调用需要返回图像

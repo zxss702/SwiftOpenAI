@@ -6,9 +6,10 @@ public enum AIModelWireAPI: String, Codable, Sendable, Hashable {
     case completions
     case responses
     case codexResponses
+    case anthropic
 }
 
-/// 统一的思考强度等级（completions / responses / Codex 共用）
+/// 统一的思考强度等级（completions / responses / Codex / Anthropic 共用）
 ///
 /// - `none`：关闭思考
 /// - 其余等级：开启思考，并由 Provider 映射到对应线格式
@@ -31,31 +32,30 @@ public enum ThinkLevel: String, Codable, Sendable, Hashable, CaseIterable {
 
 /// AI 模型配置信息
 ///
-/// 对外统一暴露为一个值类型，内部区分三条传输线路：
+/// 对外统一暴露为一个值类型，内部区分四条传输线路：
 /// - `chat/completions`
 /// - 通用 `/responses`
 /// - Codex（ChatGPT backend，复用 Responses 协议）
+/// - Anthropic Messages API（`/v1/messages`）
+///
+/// 端点统一用完整 `baseURL` 配置（如 `https://api.deepseek.com`、`http://localhost:8080`），
+/// 库再按线路追加资源路径。
 public enum AIModelInfoValue: Sendable, Codable, Hashable {
     case completions(CompletionsInfo)
     case responses(ResponsesInfo)
     case codex(CodexInfo)
+    case anthropic(AnthropicInfo)
 
-    /// 兼容旧的 completions 初始化方式。
+    /// Completions 便捷初始化。
     public init(
         token: String,
-        host: String = "api.openai.com",
-        port: Int? = nil,
-        scheme: String = "https",
-        basePath: String? = nil,
+        baseURL: String = "https://api.openai.com/v1",
         modelID: String = "gpt-4"
     ) {
         self = .completions(
             CompletionsInfo(
                 token: token,
-                host: host,
-                port: port,
-                scheme: scheme,
-                basePath: basePath,
+                baseURL: baseURL,
                 modelID: modelID
             )
         )
@@ -69,6 +69,8 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
             return .responses
         case .codex:
             return .codexResponses
+        case .anthropic:
+            return .anthropic
         }
     }
 
@@ -80,54 +82,12 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
             return info.modelID
         case .codex(let info):
             return info.modelID
+        case .anthropic(let info):
+            return info.modelID
         }
     }
 
-    public var host: String {
-        switch self {
-        case .completions(let info):
-            return info.host
-        case .responses(let info):
-            return info.host
-        case .codex(let info):
-            return info.host
-        }
-    }
-
-    public var port: Int? {
-        switch self {
-        case .completions(let info):
-            return info.port
-        case .responses(let info):
-            return info.port
-        case .codex(let info):
-            return info.port
-        }
-    }
-
-    public var scheme: String {
-        switch self {
-        case .completions(let info):
-            return info.scheme
-        case .responses(let info):
-            return info.scheme
-        case .codex(let info):
-            return info.scheme
-        }
-    }
-
-    public var basePath: String? {
-        switch self {
-        case .completions(let info):
-            return info.basePath
-        case .responses(let info):
-            return info.basePath
-        case .codex(let info):
-            return info.basePath
-        }
-    }
-
-    /// completions / responses 返回 API key，codex 返回 access token。
+    /// completions / responses / anthropic 返回 API key，codex 返回 access token。
     public var token: String {
         switch self {
         case .completions(let info):
@@ -136,27 +96,33 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
             return info.token
         case .codex(let info):
             return info.accessToken
+        case .anthropic(let info):
+            return info.token
         }
     }
 
-    public var resolvedBasePath: String {
+    /// 配置的 API 根 URL 字符串。
+    public var baseURL: String {
         switch self {
         case .completions(let info):
-            return info.basePath ?? "/v1"
+            return info.baseURL
         case .responses(let info):
-            return info.basePath ?? "/v1"
+            return info.baseURL
         case .codex(let info):
-            return info.basePath
+            return info.baseURL
+        case .anthropic(let info):
+            return info.baseURL
         }
     }
 
-    public var baseURL: URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = host
-        components.port = port
-        components.path = resolvedBasePath
-        return components.url
+    /// 解析后的配置根 URL；无效时为 `nil`。
+    public var resolvedURL: URL? {
+        try? APIBaseURL.parse(baseURL)
+    }
+
+    /// 配置 URL 的 path（无 path 时为空字符串）。
+    public var configuredPath: String {
+        APIBaseURL.configuredPath(of: baseURL)
     }
 
     public var completionsInfo: CompletionsInfo? {
@@ -174,6 +140,11 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         return info
     }
 
+    public var anthropicInfo: AnthropicInfo? {
+        guard case .anthropic(let info) = self else { return nil }
+        return info
+    }
+
     public var isResponses: Bool {
         if case .responses = self {
             return true
@@ -188,48 +159,35 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         return false
     }
 
+    public var isAnthropic: Bool {
+        if case .anthropic = self {
+            return true
+        }
+        return false
+    }
+
     public struct CompletionsInfo: Sendable, Codable, Hashable {
         /// API 访问令牌
         public let token: String
 
-        /// API 主机地址
-        public let host: String
-
-        /// API 端口号
-        public let port: Int?
-
-        /// URL 协议方案
-        public let scheme: String
-
-        /// API 基础路径
-        public let basePath: String?
+        /// API 根 URL（默认 `https://api.openai.com/v1`，请求时追加 `/chat/completions`）
+        public let baseURL: String
 
         /// 模型标识符
         public let modelID: String
 
         public init(
             token: String,
-            host: String = "api.openai.com",
-            port: Int? = nil,
-            scheme: String = "https",
-            basePath: String? = nil,
+            baseURL: String = "https://api.openai.com/v1",
             modelID: String = "gpt-4"
         ) {
             self.token = token
-            self.host = host
-            self.port = port
-            self.scheme = scheme
-            self.basePath = basePath
+            self.baseURL = APIBaseURL.normalize(baseURL)
             self.modelID = modelID
         }
 
-        public var baseURL: URL? {
-            var components = URLComponents()
-            components.scheme = scheme
-            components.host = host
-            components.port = port
-            components.path = basePath ?? "/v1"
-            return components.url
+        public var resolvedURL: URL? {
+            try? APIBaseURL.parse(baseURL)
         }
     }
 
@@ -238,44 +196,24 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         /// API 访问令牌
         public let token: String
 
-        /// API 主机地址
-        public let host: String
-
-        /// API 端口号
-        public let port: Int?
-
-        /// URL 协议方案
-        public let scheme: String
-
-        /// API 基础路径（默认 `/v1`，请求时追加 `/responses`）
-        public let basePath: String?
+        /// API 根 URL（默认 `https://api.openai.com/v1`，请求时追加 `/responses`）
+        public let baseURL: String
 
         /// 模型标识符
         public let modelID: String
 
         public init(
             token: String,
-            host: String = "api.openai.com",
-            port: Int? = nil,
-            scheme: String = "https",
-            basePath: String? = nil,
+            baseURL: String = "https://api.openai.com/v1",
             modelID: String = "gpt-4"
         ) {
             self.token = token
-            self.host = host
-            self.port = port
-            self.scheme = scheme
-            self.basePath = basePath
+            self.baseURL = APIBaseURL.normalize(baseURL)
             self.modelID = modelID
         }
 
-        public var baseURL: URL? {
-            var components = URLComponents()
-            components.scheme = scheme
-            components.host = host
-            components.port = port
-            components.path = basePath ?? "/v1"
-            return components.url
+        public var resolvedURL: URL? {
+            try? APIBaseURL.parse(baseURL)
         }
 
         public var defaultHeaders: [String: String] {
@@ -289,39 +227,26 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         public let accessToken: String
         public let accountID: String
         public let modelID: String
-        public let host: String
-        public let port: Int?
-        public let scheme: String
-        public let basePath: String
+        /// API 根 URL（默认 `https://chatgpt.com/backend-api/codex`，请求时追加 `/responses`）
+        public let baseURL: String
         public let isFedRAMPAccount: Bool
 
         public init(
             accessToken: String,
             accountID: String,
             modelID: String = "gpt-5.4",
-            host: String = "chatgpt.com",
-            port: Int? = nil,
-            scheme: String = "https",
-            basePath: String = "/backend-api/codex",
+            baseURL: String = "https://chatgpt.com/backend-api/codex",
             isFedRAMPAccount: Bool = false
         ) {
             self.accessToken = accessToken
             self.accountID = accountID
             self.modelID = modelID
-            self.host = host
-            self.port = port
-            self.scheme = scheme
-            self.basePath = basePath
+            self.baseURL = APIBaseURL.normalize(baseURL)
             self.isFedRAMPAccount = isFedRAMPAccount
         }
 
-        public var baseURL: URL? {
-            var components = URLComponents()
-            components.scheme = scheme
-            components.host = host
-            components.port = port
-            components.path = basePath
-            return components.url
+        public var resolvedURL: URL? {
+            try? APIBaseURL.parse(baseURL)
         }
 
         public var defaultHeaders: [String: String] {
@@ -333,6 +258,44 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
                 headers["X-OpenAI-Fedramp"] = "true"
             }
             return headers
+        }
+    }
+
+    /// Anthropic Messages API（`/messages`）配置
+    public struct AnthropicInfo: Sendable, Codable, Hashable {
+        /// API 访问令牌（`x-api-key`）
+        public let token: String
+
+        /// API 根 URL（默认 `https://api.anthropic.com`，请求时追加 `/v1/messages`）
+        public let baseURL: String
+
+        /// 模型标识符
+        public let modelID: String
+
+        /// Anthropic API 版本头
+        public let apiVersion: String
+
+        public init(
+            token: String,
+            baseURL: String = "https://api.anthropic.com",
+            modelID: String = "claude-sonnet-4-5",
+            apiVersion: String = "2023-06-01"
+        ) {
+            self.token = token
+            self.baseURL = APIBaseURL.normalize(baseURL)
+            self.modelID = modelID
+            self.apiVersion = apiVersion
+        }
+
+        public var resolvedURL: URL? {
+            try? APIBaseURL.parse(baseURL)
+        }
+
+        public var defaultHeaders: [String: String] {
+            [
+                "x-api-key": token,
+                "anthropic-version": apiVersion
+            ]
         }
     }
 }

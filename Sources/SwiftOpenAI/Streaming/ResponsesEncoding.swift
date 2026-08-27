@@ -123,6 +123,8 @@ nonisolated func makeResponsesRequestBody(
         "model": modelID,
         "input": preparedPrompt.input,
         "stream": true,
+        // Align with openai/codex ResponsesApiRequest: always store=false.
+        "store": false,
         "parallel_tool_calls": parallelToolCalls ?? !(tools?.isEmpty ?? true)
     ]
 
@@ -239,17 +241,7 @@ private nonisolated func prepareResponsesPrompt(
 }
 
 nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
-    var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
-    var path = components.path
-    if path.hasSuffix("/") {
-        path.removeLast()
-    }
-    if path.hasSuffix("/responses") {
-        components.path = path
-    } else {
-        components.path = path + "/responses"
-    }
-    return components.url ?? baseURL
+    (try? APIBaseURL.appendResponses(to: baseURL.absoluteString)) ?? baseURL
 }
 
 nonisolated func encodeResponsesInputItems(

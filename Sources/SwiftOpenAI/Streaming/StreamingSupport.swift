@@ -131,6 +131,28 @@ nonisolated public func sendMessage(
             extraHeaders: extraHeaders,
             action: action
         )
+    case .anthropic(let anthropicInfo):
+        return try await sendAnthropicMessage(
+            modelInfo: anthropicInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools?.map(\.asChatCompletionTool),
+            topP: topP,
+            user: user,
+            thinkLevel: thinkLevel,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders,
+            action: action
+        )
     }
 }
 
@@ -203,6 +225,27 @@ nonisolated public func sendMessageSync(
     case .codex(let codexInfo):
         return try await sendCodexResponsesMessage(
             modelInfo: codexInfo,
+            messages: messages,
+            frequencyPenalty: frequencyPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            n: n,
+            parallelToolCalls: parallelToolCalls,
+            prediction: prediction,
+            presencePenalty: presencePenalty,
+            responseFormat: responseFormat,
+            stop: stop,
+            temperature: temperature,
+            toolChoice: toolChoice,
+            tools: tools?.map(\.asChatCompletionTool),
+            topP: topP,
+            user: user,
+            thinkLevel: thinkLevel,
+            extraBody: extraBody,
+            extraHeaders: extraHeaders
+        ) { _ in }
+    case .anthropic(let anthropicInfo):
+        return try await sendAnthropicMessage(
+            modelInfo: anthropicInfo,
             messages: messages,
             frequencyPenalty: frequencyPenalty,
             maxCompletionTokens: maxCompletionTokens,

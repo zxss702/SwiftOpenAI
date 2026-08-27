@@ -252,7 +252,8 @@ enum ProviderCompatibilityValidator {
 
 enum ProviderRequestEncoder {
     static func makeRequest(query: ChatQuery, configuration: OpenAIConfiguration) throws -> PreparedChatRequest {
-        let family = ProviderFamilyResolver.resolve(host: configuration.host)
+        let host = APIBaseURL.host(of: configuration.baseURL) ?? ""
+        let family = ProviderFamilyResolver.resolve(host: host)
         let canonicalRequest = CanonicalChatRequest(
             messages: query.messages,
             model: query.model,
@@ -279,14 +280,18 @@ enum ProviderRequestEncoder {
         )
 
         try ProviderCompatibilityValidator.validate(canonicalRequest, family: family)
-        var normalizedBasePath = normalizedBasePath(from: configuration.basePath)
-        // DeepSeek strict 工具需要 base_url 为 /beta；仅在用户未显式配置非 /v1 路径时自动切换
+        var requestURL = try APIBaseURL.appendChatCompletions(to: configuration.baseURL)
+        // DeepSeek strict 工具需要 /beta；仅在最终路径为默认 /v1/chat/completions 时自动切换
         if family == .deepseek,
-           normalizedBasePath == "/v1/chat/completions",
+           requestURL.path == "/v1/chat/completions",
            canonicalRequest.tools?.contains(where: { $0.function.strict == true }) == true {
-            normalizedBasePath = "/beta/chat/completions"
+            var components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false) ?? URLComponents()
+            components.path = "/beta/chat/completions"
+            guard let betaURL = components.url else {
+                throw OpenAIError.invalidURL
+            }
+            requestURL = betaURL
         }
-        let requestURL = try makeRequestURL(configuration: configuration, normalizedBasePath: normalizedBasePath)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "POST"
@@ -318,7 +323,7 @@ enum ProviderRequestEncoder {
                 providerName: family.providerName,
                 requestID: nil,
                 resolvedModel: canonicalRequest.model,
-                resolvedBasePath: normalizedBasePath
+                resolvedBasePath: requestURL.path
             )
         )
     }
@@ -780,41 +785,6 @@ enum ProviderRequestEncoder {
         case .moonshot:
             break
         }
-    }
-
-    private static func normalizedBasePath(from basePath: String?) -> String {
-        let trimmed = (basePath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-            ? basePath!.trimmingCharacters(in: .whitespacesAndNewlines)
-            : "/v1"
-        let components = trimmed.split(separator: "/", omittingEmptySubsequences: true)
-        var normalized = "/" + components.joined(separator: "/")
-        if normalized == "/chat/completions" {
-            return normalized
-        }
-        if normalized.hasSuffix("/chat/completions") {
-            return normalized
-        }
-        if normalized == "/" {
-            return "/chat/completions"
-        }
-        normalized += "/chat/completions"
-        return normalized
-    }
-
-    private static func makeRequestURL(
-        configuration: OpenAIConfiguration,
-        normalizedBasePath: String
-    ) throws -> URL {
-        var components = URLComponents()
-        components.scheme = configuration.scheme
-        components.host = configuration.host
-        components.port = configuration.port
-        components.path = normalizedBasePath
-
-        guard let url = components.url else {
-            throw OpenAIError.invalidURL
-        }
-        return url
     }
 
     private static func mergeExtraBody(
