@@ -33,6 +33,13 @@ enum APIBaseURL {
         (try? parse(raw))?.host
     }
 
+    /// Whether a URL path segment includes `beta` (e.g. `/beta/chat/completions`).
+    static func pathContainsBeta(_ path: String) -> Bool {
+        path.lowercased()
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .contains { $0 == "beta" }
+    }
+
     /// Completions: empty path → `/v1/chat/completions`; else append `/chat/completions` unless already present.
     static func appendChatCompletions(to raw: String) throws -> URL {
         try append(
@@ -101,7 +108,7 @@ enum APIBaseURL {
 
     private static func components(from raw: String) throws -> URLComponents {
         let url = try parse(raw)
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw OpenAIError.invalidURL
         }
         return components

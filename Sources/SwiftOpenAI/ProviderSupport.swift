@@ -280,18 +280,7 @@ enum ProviderRequestEncoder {
         )
 
         try ProviderCompatibilityValidator.validate(canonicalRequest, family: family)
-        var requestURL = try APIBaseURL.appendChatCompletions(to: configuration.baseURL)
-        // DeepSeek strict 工具需要 /beta；仅在最终路径为默认 /v1/chat/completions 时自动切换
-        if family == .deepseek,
-           requestURL.path == "/v1/chat/completions",
-           canonicalRequest.tools?.contains(where: { $0.function.strict == true }) == true {
-            var components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false) ?? URLComponents()
-            components.path = "/beta/chat/completions"
-            guard let betaURL = components.url else {
-                throw OpenAIError.invalidURL
-            }
-            requestURL = betaURL
-        }
+        let requestURL = try APIBaseURL.appendChatCompletions(to: configuration.baseURL)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "POST"
@@ -313,7 +302,11 @@ enum ProviderRequestEncoder {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        let body = try buildRequestBody(from: canonicalRequest, family: family)
+        let body = try buildRequestBody(
+            from: canonicalRequest,
+            family: family,
+            requestPath: requestURL.path
+        )
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         return PreparedChatRequest(
@@ -328,7 +321,11 @@ enum ProviderRequestEncoder {
         )
     }
 
-    private static func buildRequestBody(from request: CanonicalChatRequest, family: ProviderFamily) throws -> [String: Any] {
+    private static func buildRequestBody(
+        from request: CanonicalChatRequest,
+        family: ProviderFamily,
+        requestPath: String
+    ) throws -> [String: Any] {
         var body: [String: Any] = [
             "messages": try encodeMessages(request.messages, family: family, model: request.model),
             "model": request.model
@@ -370,7 +367,7 @@ enum ProviderRequestEncoder {
             body["tool_choice"] = try encodeToolChoice(toolChoice)
         }
         if let tools = request.tools {
-            body["tools"] = try encodeTools(tools, family: family)
+            body["tools"] = try encodeTools(tools, family: family, requestPath: requestPath)
         }
         if let topP = request.topP {
             body["top_p"] = topP
@@ -823,11 +820,20 @@ enum ProviderRequestEncoder {
 
     private static func encodeTools(
         _ tools: [ChatQuery.ChatCompletionToolParam],
-        family: ProviderFamily
+        family: ProviderFamily,
+        requestPath: String
     ) throws -> [Any] {
         let encoded: [Any] = try tools.map { try jsonValue($0) }
-        guard !family.supportsToolStrict else { return encoded }
-        // 不支持 strict 的 Provider：剥除 function.strict，即使工具声明了也不发送
+        let keepStrict: Bool
+        switch family {
+        case .deepseek:
+            // DeepSeek strict 仅在配置的 baseURL 已带 /beta 时下发；不再自动改写路径
+            keepStrict = APIBaseURL.pathContainsBeta(requestPath)
+        default:
+            keepStrict = family.supportsToolStrict
+        }
+        guard !keepStrict else { return encoded }
+        // 不支持 strict（或 DeepSeek 非 beta）：剥除 function.strict
         return encoded.map { tool in
             guard var dict = tool as? [String: Any],
                   var function = dict["function"] as? [String: Any] else {
