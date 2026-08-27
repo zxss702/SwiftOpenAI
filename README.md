@@ -100,7 +100,7 @@ let anthropic = AIModelInfoValue.anthropic(
 )
 ```
 
-`responses` 与 `codex` 共用 Responses 协议内核；差异主要在鉴权头、默认路径，以及 Codex 在无 system 时注入默认 `instructions`。`anthropic` 在 Encoding 层把 Chat Completions 消息映射到 Anthropic `/v1/messages`。端点统一用完整 `baseURL`（如 `https://api.deepseek.com`、`http://localhost:8080`），库再按线路追加资源路径。
+`responses` 与 `codex` 共用 Responses 协议内核；差异主要在鉴权头与默认路径。历史消息（含 system / reminder）按原顺序编进 `input`，不使用 `instructions`。`anthropic` 在 Encoding 层把 Chat Completions 消息映射到 Anthropic `/v1/messages`。端点统一用完整 `baseURL`（如 `https://api.deepseek.com`、`http://localhost:8080`），库再按线路追加资源路径。
 
 ### 一行创建对话 🎉
 

@@ -1,16 +1,11 @@
 import Foundation
 
-let defaultCodexResponsesInstructions = "You are a helpful assistant."
-
 struct ResponsesRequestConfig: Sendable {
     let modelID: String
     let baseURL: URL
     let resolvedBasePath: String
     let providerName: String
     let defaultHeaders: [String: String]
-    /// When true and no system/reminder text exists, inject Codex default instructions.
-    /// When false, omit `instructions` if empty.
-    let requireDefaultInstructions: Bool
 }
 
 struct PreparedResponsesRequest: Sendable {
@@ -67,8 +62,7 @@ nonisolated func makeResponsesURLRequest(
         tools: tools,
         topP: topP,
         thinkLevel: thinkLevel,
-        extraBody: extraBody,
-        requireDefaultInstructions: config.requireDefaultInstructions
+        extraBody: extraBody
     )
 
     var request = URLRequest(url: url)
@@ -112,25 +106,17 @@ nonisolated func makeResponsesRequestBody(
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
     thinkLevel: ThinkLevel?,
-    extraBody: [String: AnyCodableValue]?,
-    requireDefaultInstructions: Bool
+    extraBody: [String: AnyCodableValue]?
 ) throws -> [String: Any] {
-    let preparedPrompt = try prepareResponsesPrompt(
-        messages,
-        requireDefaultInstructions: requireDefaultInstructions
-    )
     var body: [String: Any] = [
         "model": modelID,
-        "input": preparedPrompt.input,
+        "input": try encodeResponsesInputItems(messages),
         "stream": true,
         // Align with openai/codex ResponsesApiRequest: always store=false.
         "store": false,
         "parallel_tool_calls": parallelToolCalls ?? !(tools?.isEmpty ?? true)
     ]
 
-    if let instructions = preparedPrompt.instructions {
-        body["instructions"] = instructions
-    }
     if let frequencyPenalty {
         body["frequency_penalty"] = frequencyPenalty
     }
@@ -199,45 +185,8 @@ nonisolated func makeCodexResponsesRequestBody(
         tools: tools,
         topP: topP,
         thinkLevel: thinkLevel,
-        extraBody: extraBody,
-        requireDefaultInstructions: true
+        extraBody: extraBody
     )
-}
-
-private nonisolated func prepareResponsesPrompt(
-    _ messages: [ChatQuery.ChatCompletionMessageParam],
-    requireDefaultInstructions: Bool
-) throws -> (instructions: String?, input: [[String: Any]]) {
-    var instructionsParts: [String] = []
-    var inputMessages: [ChatQuery.ChatCompletionMessageParam] = []
-
-    for message in messages {
-        switch message {
-        case .system(let systemMessage):
-            guard case .textContent(let text) = systemMessage.content else { continue }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                instructionsParts.append(trimmed)
-            }
-        case .reminder(let reminderMessage):
-            guard case .textContent(let text) = reminderMessage.content else { continue }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                instructionsParts.append(trimmed)
-            }
-        default:
-            inputMessages.append(message)
-        }
-    }
-
-    let instructions: String?
-    if instructionsParts.isEmpty {
-        instructions = requireDefaultInstructions ? defaultCodexResponsesInstructions : nil
-    } else {
-        instructions = instructionsParts.joined(separator: "\n\n")
-    }
-
-    return (instructions, try encodeResponsesInputItems(inputMessages))
 }
 
 nonisolated func appendResponsesPath(to baseURL: URL) -> URL {

@@ -3,7 +3,7 @@ import XCTest
 
 final class CodexSupportTests: XCTestCase {
 
-    func testCodexRequestInjectsDefaultInstructionsAndChatGPTHeaders() throws {
+    func testCodexRequestOmitsInstructionsAndUsesChatGPTHeaders() throws {
         let codexInfo = AIModelInfoValue.CodexInfo(
             accessToken: "access-token",
             accountID: "account-id"
@@ -14,8 +14,7 @@ final class CodexSupportTests: XCTestCase {
                 baseURL: try APIBaseURL.parse(codexInfo.baseURL),
                 resolvedBasePath: APIBaseURL.configuredPath(of: codexInfo.baseURL),
                 providerName: "openai-codex",
-                defaultHeaders: codexInfo.defaultHeaders,
-                requireDefaultInstructions: true
+                defaultHeaders: codexInfo.defaultHeaders
             ),
             messages: [.user("hello")],
             frequencyPenalty: nil,
@@ -41,15 +40,21 @@ final class CodexSupportTests: XCTestCase {
         XCTAssertEqual(prepared.urlRequest.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-id")
 
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
-        XCTAssertEqual(body["instructions"] as? String, "You are a helpful assistant.")
+        XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual(body["stream"] as? Bool, true)
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 1)
+        XCTAssertEqual(input[0]["role"] as? String, "user")
     }
 
-    func testMakeCodexResponsesRequestBodyRequiresDefaultInstructions() throws {
+    func testMakeCodexResponsesRequestBodyPutsHistoryInInput() throws {
         let body = try makeCodexResponsesRequestBody(
             modelInfo: .init(accessToken: "t", accountID: "a", modelID: "gpt-5.4"),
-            messages: [.user("hi")],
+            messages: [
+                .system("codex system"),
+                .user("hi")
+            ],
             frequencyPenalty: nil,
             maxCompletionTokens: nil,
             parallelToolCalls: nil,
@@ -63,8 +68,12 @@ final class CodexSupportTests: XCTestCase {
             thinkLevel: nil,
             extraBody: nil
         )
-        XCTAssertEqual(body["instructions"] as? String, "You are a helpful assistant.")
+        XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["model"] as? String, "gpt-5.4")
         XCTAssertEqual(body["store"] as? Bool, false)
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 2)
+        XCTAssertEqual(input[0]["role"] as? String, "system")
+        XCTAssertEqual(input[1]["role"] as? String, "user")
     }
 }

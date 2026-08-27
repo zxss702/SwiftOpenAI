@@ -49,8 +49,7 @@ nonisolated func sendResponsesMessage(
             baseURL: try APIBaseURL.parse(modelInfo.baseURL),
             resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL),
             providerName: "openai-responses",
-            defaultHeaders: modelInfo.defaultHeaders,
-            requireDefaultInstructions: false
+            defaultHeaders: modelInfo.defaultHeaders
         ),
         messages: messages,
         frequencyPenalty: frequencyPenalty,

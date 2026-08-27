@@ -14,15 +14,14 @@ final class ResponsesEncodingTests: XCTestCase {
         XCTAssertEqual(appendResponsesPath(to: root).absoluteString, "https://api.deepseek.com/v1/responses")
     }
 
-    func testGenericResponsesOmitsDefaultInstructionsAndUsesBearer() throws {
+    func testGenericResponsesOmitsInstructionsAndUsesBearer() throws {
         let prepared = try makeResponsesURLRequest(
             config: ResponsesRequestConfig(
                 modelID: "gpt-5",
                 baseURL: try XCTUnwrap(URL(string: "https://api.openai.com/v1")),
                 resolvedBasePath: "/v1",
                 providerName: "openai-responses",
-                defaultHeaders: ["Authorization": "Bearer api-key"],
-                requireDefaultInstructions: false
+                defaultHeaders: ["Authorization": "Bearer api-key"]
             ),
             messages: [.user("hello")],
             frequencyPenalty: nil,
@@ -93,11 +92,10 @@ final class ResponsesEncodingTests: XCTestCase {
             tools: [tool],
             topP: 0.9,
             thinkLevel: .high,
-            extraBody: ["metadata": .object(["source": .string("unit-test")])],
-            requireDefaultInstructions: true
+            extraBody: ["metadata": .object(["source": .string("unit-test")])]
         )
 
-        XCTAssertEqual(body["instructions"] as? String, "system prompt")
+        XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["max_output_tokens"] as? Int, 512)
         XCTAssertEqual(body["tool_choice"] as? String, "required")
         XCTAssertEqual((body["reasoning"] as? [String: Any])?["effort"] as? String, "high")
@@ -107,9 +105,80 @@ final class ResponsesEncodingTests: XCTestCase {
         XCTAssertEqual(tools.first?["name"] as? String, "lookup_weather")
 
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 5)
+        XCTAssertEqual(input[0]["role"] as? String, "system")
+        XCTAssertEqual(Self.inputText(of: input[0]), "system prompt")
+        XCTAssertEqual(input[1]["role"] as? String, "user")
+        XCTAssertEqual(input[3]["type"] as? String, "function_call")
+        XCTAssertEqual(input[4]["type"] as? String, "function_call_output")
+    }
+
+    func testInterleavedSystemReminderStayInInputInOrder() throws {
+        let body = try makeResponsesRequestBody(
+            modelID: "gpt-5.4",
+            messages: [
+                .system("sys-1"),
+                .user("hello"),
+                .reminder("rem-1"),
+                .system("sys-2")
+            ],
+            frequencyPenalty: nil,
+            maxCompletionTokens: nil,
+            parallelToolCalls: nil,
+            presencePenalty: nil,
+            responseFormat: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: nil,
+            topP: nil,
+            thinkLevel: nil,
+            extraBody: nil
+        )
+
+        XCTAssertNil(body["instructions"])
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
         XCTAssertEqual(input.count, 4)
-        XCTAssertEqual(input[2]["type"] as? String, "function_call")
-        XCTAssertEqual(input[3]["type"] as? String, "function_call_output")
+        XCTAssertEqual(input[0]["role"] as? String, "system")
+        XCTAssertEqual(Self.inputText(of: input[0]), "sys-1")
+        XCTAssertEqual(input[1]["role"] as? String, "user")
+        XCTAssertEqual(Self.inputText(of: input[1]), "hello")
+        XCTAssertEqual(input[2]["role"] as? String, "system")
+        XCTAssertEqual(Self.inputText(of: input[2]), "rem-1")
+        XCTAssertEqual(input[3]["role"] as? String, "system")
+        XCTAssertEqual(Self.inputText(of: input[3]), "sys-2")
+    }
+
+    func testSystemAndReminderOnlyProducesNonEmptyInput() throws {
+        let body = try makeResponsesRequestBody(
+            modelID: "gpt-5.4",
+            messages: [
+                .system("agent init"),
+                .reminder("<system_hello_summary>join briefing</system_hello_summary>")
+            ],
+            frequencyPenalty: nil,
+            maxCompletionTokens: nil,
+            parallelToolCalls: nil,
+            presencePenalty: nil,
+            responseFormat: nil,
+            stop: nil,
+            temperature: nil,
+            toolChoice: nil,
+            tools: nil,
+            topP: nil,
+            thinkLevel: nil,
+            extraBody: nil
+        )
+
+        XCTAssertNil(body["instructions"])
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 2)
+        XCTAssertFalse(input.isEmpty)
+        XCTAssertEqual(Self.inputText(of: input[0]), "agent init")
+        XCTAssertEqual(
+            Self.inputText(of: input[1]),
+            "<system_hello_summary>join briefing</system_hello_summary>"
+        )
     }
 
     func testAssistantReasoningHistoryIsOmittedFromInput() throws {
@@ -132,12 +201,18 @@ final class ResponsesEncodingTests: XCTestCase {
             tools: nil,
             topP: nil,
             thinkLevel: .medium,
-            extraBody: nil,
-            requireDefaultInstructions: true
+            extraBody: nil
         )
+        XCTAssertNil(body["instructions"])
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
-        XCTAssertEqual(input.count, 2)
-        XCTAssertEqual(input[0]["role"] as? String, "user")
+        XCTAssertEqual(input.count, 3)
+        XCTAssertEqual(input[0]["role"] as? String, "system")
         XCTAssertEqual(input[1]["role"] as? String, "user")
+        XCTAssertEqual(input[2]["role"] as? String, "user")
+    }
+
+    private static func inputText(of item: [String: Any]) -> String? {
+        let content = item["content"] as? [[String: Any]]
+        return content?.first?["text"] as? String
     }
 }

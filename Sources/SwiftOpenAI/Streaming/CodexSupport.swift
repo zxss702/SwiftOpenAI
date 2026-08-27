@@ -34,8 +34,7 @@ nonisolated func sendCodexResponsesMessage(
             baseURL: try APIBaseURL.parse(modelInfo.baseURL),
             resolvedBasePath: APIBaseURL.configuredPath(of: modelInfo.baseURL),
             providerName: "openai-codex",
-            defaultHeaders: modelInfo.defaultHeaders,
-            requireDefaultInstructions: true
+            defaultHeaders: modelInfo.defaultHeaders
         ),
         messages: messages,
         frequencyPenalty: frequencyPenalty,
