@@ -47,21 +47,6 @@ enum ProviderFamily: String, Sendable {
         }
     }
 
-    /// 按模型返回图像/视频多模态能力（DeepSeek 视觉模型可单独放开图片）
-    func multimediaCapability(for model: String) -> MultimediaCapability {
-        switch self {
-        case .minimax:
-            return MultimediaCapability(supportsImage: false, supportsVideo: false)
-        case .deepseek:
-            if model.lowercased() == "deepseek-v4-flash-vision-exp" {
-                return MultimediaCapability(supportsImage: true, supportsVideo: false)
-            }
-            return MultimediaCapability(supportsImage: false, supportsVideo: false)
-        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible:
-            return MultimediaCapability(supportsImage: true, supportsVideo: true)
-        }
-    }
-
     /// 该 Provider 是否支持 function 级 strict（工具参数严格遵循 JSON Schema）
     ///
     /// 不支持的 Provider 即使工具声明了 strict 也会在发送时剥除该字段。
@@ -100,12 +85,6 @@ enum ProviderFamily: String, Sendable {
             return .none
         }
     }
-}
-
-/// 出站消息对图像 / 视频的支持能力
-struct MultimediaCapability: Sendable {
-    var supportsImage: Bool
-    var supportsVideo: Bool
 }
 
 /// Chat Completions `response_format` 能力层级（声明顺序即 Comparable 顺序）
@@ -403,24 +382,12 @@ enum ProviderRequestEncoder {
         family: ProviderFamily,
         model: String
     ) throws -> [[String: Any]] {
-        let capability = family.multimediaCapability(for: model)
+        let capability = MultimediaCapabilityResolver.resolve(
+            family: family,
+            wireAPI: .completions,
+            model: model
+        )
         return try messages.map { try encodeMessage($0, family: family, capability: capability) }
-    }
-
-    /// 不支持多媒体时：保留文本并追加提示，避免整条删除导致 tool_call 不配对
-    private static func plaintextReplacingUnsupportedMultimedia(
-        texts: [String],
-        hasImage: Bool,
-        hasVideo: Bool
-    ) -> String {
-        var segments = texts.filter { !$0.isEmpty }
-        if hasImage {
-            segments.append("image 不支持")
-        }
-        if hasVideo {
-            segments.append("video 不支持")
-        }
-        return segments.joined(separator: "\n")
     }
 
     private static func encodeImageURLPart(url: String, detail: String) -> [String: Any] {
@@ -452,25 +419,13 @@ enum ProviderRequestEncoder {
         hasUnsupportedVideo: Bool,
         keptSupportedMedia: Bool
     ) -> Any {
-        let hasUnsupported = hasUnsupportedImage || hasUnsupportedVideo
-        if !hasUnsupported {
-            return encodedParts
-        }
-        if !keptSupportedMedia {
-            return plaintextReplacingUnsupportedMultimedia(
-                texts: texts,
-                hasImage: hasUnsupportedImage,
-                hasVideo: hasUnsupportedVideo
-            )
-        }
-        var parts = encodedParts
-        if hasUnsupportedImage {
-            parts.append(["type": "text", "text": "image 不支持"])
-        }
-        if hasUnsupportedVideo {
-            parts.append(["type": "text", "text": "video 不支持"])
-        }
-        return parts
+        finalizeMultimediaContentParts(
+            encodedParts: encodedParts,
+            texts: texts,
+            hasUnsupportedImage: hasUnsupportedImage,
+            hasUnsupportedVideo: hasUnsupportedVideo,
+            keptSupportedMedia: keptSupportedMedia
+        )
     }
 
     private static func encodeMessage(

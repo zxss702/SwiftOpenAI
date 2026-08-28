@@ -64,7 +64,9 @@ nonisolated func makeResponsesURLRequest(
         tools: tools,
         topP: topP,
         thinkLevel: thinkLevel,
-        extraBody: extraBody
+        extraBody: extraBody,
+        baseURL: config.baseURL.absoluteString,
+        wireAPI: config.providerName == "openai-codex" ? .codexResponses : .responses
     )
 
     var request = URLRequest(url: url)
@@ -114,11 +116,21 @@ nonisolated func makeResponsesRequestBody(
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
     thinkLevel: ThinkLevel?,
-    extraBody: [String: AnyCodableValue]?
+    extraBody: [String: AnyCodableValue]?,
+    baseURL: String? = nil,
+    wireAPI: AIModelWireAPI = .responses
 ) throws -> [String: Any] {
+    let host = baseURL.flatMap { APIBaseURL.host(of: $0) } ?? ""
+    let family = ProviderFamilyResolver.resolve(host: host)
+    let capability = MultimediaCapabilityResolver.resolve(
+        family: family,
+        wireAPI: wireAPI,
+        model: modelID
+    )
+
     var body: [String: Any] = [
         "model": modelID,
-        "input": try encodeResponsesInputItems(messages),
+        "input": try encodeResponsesInputItems(messages, capability: capability),
         "stream": true,
         // Align with openai/codex ResponsesApiRequest: always store=false.
         "store": false,
@@ -193,7 +205,9 @@ nonisolated func makeCodexResponsesRequestBody(
         tools: tools,
         topP: topP,
         thinkLevel: thinkLevel,
-        extraBody: extraBody
+        extraBody: extraBody,
+        baseURL: modelInfo.baseURL,
+        wireAPI: .codexResponses
     )
 }
 
@@ -202,7 +216,8 @@ nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
 }
 
 nonisolated func encodeResponsesInputItems(
-    _ messages: [ChatQuery.ChatCompletionMessageParam]
+    _ messages: [ChatQuery.ChatCompletionMessageParam],
+    capability: MultimediaCapability = .none
 ) throws -> [[String: Any]] {
     try messages.flatMap { message -> [[String: Any]] in
         switch message {
@@ -230,7 +245,7 @@ nonisolated func encodeResponsesInputItems(
             return [[
                 "type": "message",
                 "role": "user",
-                "content": try encodeResponsesUserContent(userMessage.content)
+                "content": try encodeResponsesUserContent(userMessage.content, capability: capability)
             ]]
 
         case .assistant(let assistantMessage):
@@ -258,76 +273,150 @@ nonisolated func encodeResponsesInputItems(
             return [[
                 "type": "function_call_output",
                 "call_id": toolMessage.toolCallId,
-                "output": try encodeResponsesToolOutput(toolMessage.content)
+                "output": try encodeResponsesToolOutput(toolMessage.content, capability: capability)
             ]]
         }
     }
 }
 
 private nonisolated func encodeResponsesUserContent(
-    _ content: UserMessageParam.Content
+    _ content: UserMessageParam.Content,
+    capability: MultimediaCapability
 ) throws -> [[String: Any]] {
     switch content {
     case .string(let text):
         return [["type": "input_text", "text": text]]
     case .contentParts(let parts):
-        return parts.map { part in
+        var texts: [String] = []
+        var encodedParts: [[String: Any]] = []
+        var hasUnsupportedImage = false
+        var hasUnsupportedVideo = false
+        var keptSupportedMedia = false
+
+        for part in parts {
             switch part {
             case .text(let text):
-                return ["type": "input_text", "text": text.text]
+                texts.append(text.text)
+                encodedParts.append(["type": "input_text", "text": text.text])
             case .image(let image):
-                return [
-                    "type": "input_image",
-                    "image_url": image.imageUrl.url,
-                    "detail": image.imageUrl.detail.rawValue
-                ]
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_image",
+                        "image_url": image.imageUrl.url,
+                        "detail": image.imageUrl.detail.rawValue
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .file(let file):
-                return [
-                    "type": "input_image",
-                    "file_id": file.fileId
-                ]
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_image",
+                        "file_id": file.fileId
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .video(let video):
-                return [
-                    "type": "input_image",
-                    "image_url": video.videoUrl.url
-                ]
+                if capability.supportsVideo {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_video",
+                        "video_url": video.videoUrl.url
+                    ])
+                } else {
+                    hasUnsupportedVideo = true
+                }
             }
         }
+
+        let finalized = finalizeMultimediaContentParts(
+            encodedParts: encodedParts,
+            texts: texts,
+            hasUnsupportedImage: hasUnsupportedImage,
+            hasUnsupportedVideo: hasUnsupportedVideo,
+            keptSupportedMedia: keptSupportedMedia
+        )
+        if let parts = finalized as? [[String: Any]] {
+            return parts.map { part in
+                if part["type"] as? String == "text", let text = part["text"] {
+                    return ["type": "input_text", "text": text]
+                }
+                return part
+            }
+        }
+        if let plain = finalized as? String {
+            return [["type": "input_text", "text": plain]]
+        }
+        return encodedParts
     }
 }
 
 private nonisolated func encodeResponsesToolOutput(
-    _ content: ToolMessageParam.Content
+    _ content: ToolMessageParam.Content,
+    capability: MultimediaCapability
 ) throws -> Any {
     switch content {
     case .textContent(let text):
         return text
     case .contentParts(let parts):
-        return parts.map { part in
+        var texts: [String] = []
+        var encodedParts: [[String: Any]] = []
+        var hasUnsupportedImage = false
+        var hasUnsupportedVideo = false
+        var keptSupportedMedia = false
+
+        for part in parts {
             switch part {
             case .text(let text):
-                return [
+                texts.append(text.text)
+                encodedParts.append([
                     "type": "input_text",
                     "text": text.text
-                ]
+                ])
             case .image(let image):
-                return [
-                    "type": "input_image",
-                    "image_url": image.imageUrl.url,
-                    "detail": image.imageUrl.detail.rawValue
-                ]
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_image",
+                        "image_url": image.imageUrl.url,
+                        "detail": image.imageUrl.detail.rawValue
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .file(let file):
-                return [
-                    "type": "input_image",
-                    "file_id": file.fileId
-                ]
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_image",
+                        "file_id": file.fileId
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .video(let video):
-                return [
-                    "type": "input_image",
-                    "image_url": video.videoUrl.url
-                ]
+                if capability.supportsVideo {
+                    keptSupportedMedia = true
+                    encodedParts.append([
+                        "type": "input_video",
+                        "video_url": video.videoUrl.url
+                    ])
+                } else {
+                    hasUnsupportedVideo = true
+                }
             }
         }
+
+        return finalizeMultimediaContentParts(
+            encodedParts: encodedParts,
+            texts: texts,
+            hasUnsupportedImage: hasUnsupportedImage,
+            hasUnsupportedVideo: hasUnsupportedVideo,
+            keptSupportedMedia: keptSupportedMedia
+        )
     }
 }
 

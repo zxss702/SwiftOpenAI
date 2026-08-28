@@ -61,7 +61,8 @@ nonisolated func makeAnthropicURLRequest(
         tools: tools,
         topP: topP,
         thinkLevel: thinkLevel,
-        extraBody: extraBody
+        extraBody: extraBody,
+        baseURL: modelInfo.baseURL
     )
 
     var request = URLRequest(url: url)
@@ -108,9 +109,17 @@ nonisolated func makeAnthropicRequestBody(
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
     thinkLevel: ThinkLevel?,
-    extraBody: [String: AnyCodableValue]?
+    extraBody: [String: AnyCodableValue]?,
+    baseURL: String? = nil
 ) throws -> [String: Any] {
-    let prepared = try prepareAnthropicPrompt(messages)
+    let host = baseURL.flatMap { APIBaseURL.host(of: $0) } ?? ""
+    let family = ProviderFamilyResolver.resolve(host: host)
+    let capability = MultimediaCapabilityResolver.resolve(
+        family: family,
+        wireAPI: .anthropic,
+        model: modelID
+    )
+    let prepared = try prepareAnthropicPrompt(messages, capability: capability)
     let thinkingEnabled = thinkLevel != nil && thinkLevel != ThinkLevel.none
     let (maxTokens, thinkingConfig) = resolvedAnthropicMaxTokensAndThinking(
         maxCompletionTokens: maxCompletionTokens,
@@ -168,7 +177,8 @@ nonisolated func appendMessagesPath(to baseURL: URL) -> URL {
 }
 
 private nonisolated func prepareAnthropicPrompt(
-    _ messages: [ChatQuery.ChatCompletionMessageParam]
+    _ messages: [ChatQuery.ChatCompletionMessageParam],
+    capability: MultimediaCapability
 ) throws -> (system: String?, messages: [[String: Any]]) {
     var systemParts: [String] = []
     var encodedMessages: [[String: Any]] = []
@@ -203,7 +213,7 @@ private nonisolated func prepareAnthropicPrompt(
             flushToolResults()
             encodedMessages.append([
                 "role": "user",
-                "content": try encodeAnthropicUserContent(userMessage.content)
+                "content": try encodeAnthropicUserContent(userMessage.content, capability: capability)
             ])
         case .assistant(let assistantMessage):
             flushToolResults()
@@ -218,7 +228,7 @@ private nonisolated func prepareAnthropicPrompt(
             pendingToolResults.append([
                 "type": "tool_result",
                 "tool_use_id": toolMessage.toolCallId,
-                "content": try encodeAnthropicToolResultContent(toolMessage.content)
+                "content": try encodeAnthropicToolResultContent(toolMessage.content, capability: capability)
             ])
         }
     }
@@ -229,32 +239,62 @@ private nonisolated func prepareAnthropicPrompt(
 }
 
 private nonisolated func encodeAnthropicUserContent(
-    _ content: UserMessageParam.Content
+    _ content: UserMessageParam.Content,
+    capability: MultimediaCapability
 ) throws -> Any {
     switch content {
     case .string(let text):
         return text
     case .contentParts(let parts):
+        var texts: [String] = []
         var encoded: [[String: Any]] = []
+        var hasUnsupportedImage = false
+        var hasUnsupportedVideo = false
+        var keptSupportedMedia = false
+
         for part in parts {
             switch part {
             case .text(let text):
+                texts.append(text.text)
                 encoded.append(["type": "text", "text": text.text])
             case .image(let image):
-                encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .file(let file):
-                encoded.append([
-                    "type": "image",
-                    "source": [
-                        "type": "file",
-                        "file_id": file.fileId
-                    ] as [String: Any]
-                ])
-            case .video:
-                encoded.append(["type": "text", "text": "video 不支持"])
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encoded.append([
+                        "type": "image",
+                        "source": [
+                            "type": "file",
+                            "file_id": file.fileId
+                        ] as [String: Any]
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
+            case .video(let video):
+                if capability.supportsVideo {
+                    keptSupportedMedia = true
+                    encoded.append(try encodeAnthropicVideo(url: video.videoUrl.url))
+                } else {
+                    hasUnsupportedVideo = true
+                }
             }
         }
-        return encoded
+
+        return finalizeMultimediaContentParts(
+            encodedParts: encoded,
+            texts: texts,
+            hasUnsupportedImage: hasUnsupportedImage,
+            hasUnsupportedVideo: hasUnsupportedVideo,
+            keptSupportedMedia: keptSupportedMedia,
+            forceArray: true
+        )
     }
 }
 
@@ -294,32 +334,62 @@ private nonisolated func encodeAnthropicAssistantContent(
 }
 
 private nonisolated func encodeAnthropicToolResultContent(
-    _ content: ToolMessageParam.Content
+    _ content: ToolMessageParam.Content,
+    capability: MultimediaCapability
 ) throws -> Any {
     switch content {
     case .textContent(let text):
         return text
     case .contentParts(let parts):
+        var texts: [String] = []
         var encoded: [[String: Any]] = []
+        var hasUnsupportedImage = false
+        var hasUnsupportedVideo = false
+        var keptSupportedMedia = false
+
         for part in parts {
             switch part {
             case .text(let text):
+                texts.append(text.text)
                 encoded.append(["type": "text", "text": text.text])
             case .image(let image):
-                encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encoded.append(try encodeAnthropicImage(url: image.imageUrl.url))
+                } else {
+                    hasUnsupportedImage = true
+                }
             case .file(let file):
-                encoded.append([
-                    "type": "image",
-                    "source": [
-                        "type": "file",
-                        "file_id": file.fileId
-                    ] as [String: Any]
-                ])
-            case .video:
-                encoded.append(["type": "text", "text": "video 不支持"])
+                if capability.supportsImage {
+                    keptSupportedMedia = true
+                    encoded.append([
+                        "type": "image",
+                        "source": [
+                            "type": "file",
+                            "file_id": file.fileId
+                        ] as [String: Any]
+                    ])
+                } else {
+                    hasUnsupportedImage = true
+                }
+            case .video(let video):
+                if capability.supportsVideo {
+                    keptSupportedMedia = true
+                    encoded.append(try encodeAnthropicVideo(url: video.videoUrl.url))
+                } else {
+                    hasUnsupportedVideo = true
+                }
             }
         }
-        return encoded
+
+        return finalizeMultimediaContentParts(
+            encodedParts: encoded,
+            texts: texts,
+            hasUnsupportedImage: hasUnsupportedImage,
+            hasUnsupportedVideo: hasUnsupportedVideo,
+            keptSupportedMedia: keptSupportedMedia,
+            forceArray: true
+        )
     }
 }
 
@@ -341,6 +411,31 @@ private nonisolated func encodeAnthropicImage(url: String) throws -> [String: An
     }
     return [
         "type": "image",
+        "source": [
+            "type": "url",
+            "url": url
+        ] as [String: Any]
+    ]
+}
+
+private nonisolated func encodeAnthropicVideo(url: String) throws -> [String: Any] {
+    if url.hasPrefix("data:"),
+       let comma = url.firstIndex(of: ","),
+       let mediaStart = url.firstIndex(of: ":") {
+        let header = String(url[url.index(after: mediaStart)..<comma])
+        let mediaType = header.split(separator: ";").first.map(String.init) ?? "video/mp4"
+        let data = String(url[url.index(after: comma)...])
+        return [
+            "type": "video",
+            "source": [
+                "type": "base64",
+                "media_type": mediaType,
+                "data": data
+            ] as [String: Any]
+        ]
+    }
+    return [
+        "type": "video",
         "source": [
             "type": "url",
             "url": url

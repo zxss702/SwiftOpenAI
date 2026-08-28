@@ -150,8 +150,7 @@ nonisolated func isDeepSeekHost(_ baseURL: String) -> Bool {
 }
 
 nonisolated func isDeepSeekVisionExpModel(_ modelID: String) -> Bool {
-    let id = modelID.lowercased()
-    return id.contains("vision-exp") || id.contains("vision_exp") || id == "deepseek-v4-flash-vision-exp"
+    MultimediaCapabilityResolver.isDeepSeekVisionExpModelID(modelID)
 }
 
 nonisolated func shouldOffloadImagesToFilesAPI(baseURL: String, modelID: String) -> Bool {
