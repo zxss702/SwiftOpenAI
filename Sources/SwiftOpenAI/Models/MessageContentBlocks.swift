@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import Crypto
 
 /// 随消息/结果携带的扩展内容块（Anthropic 原样 blocks、Files API 绑定等）。
 public struct MessageContentBlocks: Codable, Sendable, Hashable {
