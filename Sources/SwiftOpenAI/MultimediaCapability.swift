@@ -27,10 +27,10 @@ enum MultimediaCapabilityResolver {
 
         var capability = discover(id)
 
+        // DeepSeek 最新代（v4-pro / v4-flash 等）均支持图像；视频仍不支持。
         if family == .deepseek || id.contains("deepseek") {
-            if isDeepSeekVisionExpModelID(id) {
-                capability = MultimediaCapability(supportsImage: true, supportsVideo: false)
-            }
+            capability.supportsImage = true
+            capability.supportsVideo = false
         }
 
         if family == .openai {
@@ -43,12 +43,6 @@ enum MultimediaCapabilityResolver {
         }
 
         return capability
-    }
-
-    /// 与 Files offload 对齐的 vision-exp 判定。
-    static func isDeepSeekVisionExpModelID(_ model: String) -> Bool {
-        let id = model.lowercased()
-        return id.contains("vision-exp") || id.contains("vision_exp")
     }
 
     static func normalizedModelID(_ model: String) -> String {
@@ -103,7 +97,7 @@ enum MultimediaCapabilityResolver {
         if isMiniMaxM3(id) {
             return MultimediaCapability(supportsImage: true, supportsVideo: true)
         }
-        if isDeepSeekVisionExpModelID(id) || id.contains("deepseek-ocr") {
+        if id.contains("deepseek") {
             return MultimediaCapability(supportsImage: true, supportsVideo: false)
         }
 

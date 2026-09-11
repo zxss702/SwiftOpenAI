@@ -149,12 +149,8 @@ nonisolated func isDeepSeekHost(_ baseURL: String) -> Bool {
     (APIBaseURL.host(of: baseURL) ?? "").lowercased().contains("deepseek")
 }
 
-nonisolated func isDeepSeekVisionExpModel(_ modelID: String) -> Bool {
-    MultimediaCapabilityResolver.isDeepSeekVisionExpModelID(modelID)
-}
-
-nonisolated func shouldOffloadImagesToFilesAPI(baseURL: String, modelID: String) -> Bool {
-    isDeepSeekHost(baseURL) && isDeepSeekVisionExpModel(modelID)
+nonisolated func shouldOffloadImagesToFilesAPI(baseURL: String, modelID _: String) -> Bool {
+    isDeepSeekHost(baseURL)
 }
 
 nonisolated func mapDeepSeekBodyLimitError(message: String, code: Int) -> OpenAIError {

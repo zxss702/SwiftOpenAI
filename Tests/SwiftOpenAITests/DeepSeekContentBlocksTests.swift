@@ -110,7 +110,7 @@ final class DeepSeekContentBlocksTests: XCTestCase {
         let offload = try await offloadDeepSeekVisionImagesIfNeeded(
             messages: messages,
             baseURL: baseURL,
-            modelID: "deepseek-v4-flash-vision-exp",
+            modelID: "deepseek-v4-pro",
             bearerToken: "token",
             priorBindings: prior,
             extraHeaders: nil
@@ -128,7 +128,7 @@ final class DeepSeekContentBlocksTests: XCTestCase {
         XCTAssertEqual(offload.fileBindings[key]?.fileId, "file-api-reuse")
     }
 
-    func testOffloadSkippedForNonDeepSeekOrNonVision() async throws {
+    func testOffloadSkippedForNonDeepSeekHost() async throws {
         let messages: [ChatQuery.ChatCompletionMessageParam] = [
             .user("look", images: [TestFixtures.tinyPNG], detail: .auto)
         ]
@@ -145,21 +145,6 @@ final class DeepSeekContentBlocksTests: XCTestCase {
               case .image = parts.first
         else {
             return XCTFail("expected image part unchanged")
-        }
-
-        let nonVision = try await offloadDeepSeekVisionImagesIfNeeded(
-            messages: messages,
-            baseURL: "https://api.deepseek.com/v1",
-            modelID: "deepseek-chat",
-            bearerToken: "token",
-            priorBindings: [:],
-            extraHeaders: nil
-        )
-        guard case .user(let user2) = nonVision.messages.first,
-              case .contentParts(let parts2) = user2.content,
-              case .image = parts2.first
-        else {
-            return XCTFail("expected image part unchanged for non-vision")
         }
     }
 

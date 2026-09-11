@@ -227,41 +227,34 @@ final class CompletionsProviderTests: XCTestCase {
     }
 
     func testDeepSeekVisionCapabilityMatrix() async throws {
-        let nonVision = try await createChatRequest(
-            query: ChatQuery(
-                messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
-                model: "deepseek-v4-pro"
-            ),
-            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
-        )
-        let nonVisionContent = try XCTUnwrap(
-            ((try TestFixtures.requestBody(from: nonVision.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
-        )
-        XCTAssertTrue(nonVisionContent.contains("image 不支持"))
+        for model in ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"] {
+            let vision = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
+                    model: model
+                ),
+                configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
+            )
+            let visionParts = try XCTUnwrap(
+                ((try TestFixtures.requestBody(from: vision.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
+            )
+            XCTAssertTrue(
+                visionParts.contains { ($0["type"] as? String) == "image_url" },
+                "expected image for \(model)"
+            )
 
-        let vision = try await createChatRequest(
-            query: ChatQuery(
-                messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
-                model: "deepseek-v4-flash-vision-exp"
-            ),
-            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
-        )
-        let visionParts = try XCTUnwrap(
-            ((try TestFixtures.requestBody(from: vision.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
-        )
-        XCTAssertTrue(visionParts.contains { ($0["type"] as? String) == "image_url" })
-
-        let videoOnly = try await createChatRequest(
-            query: ChatQuery(
-                messages: [.user("vid", videoDatas: TestFixtures.tinyVideo)],
-                model: "deepseek-v4-flash-vision-exp"
-            ),
-            configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
-        )
-        let videoContent = try XCTUnwrap(
-            ((try TestFixtures.requestBody(from: videoOnly.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
-        )
-        XCTAssertTrue(videoContent.contains("video 不支持"))
+            let videoOnly = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("vid", videoDatas: TestFixtures.tinyVideo)],
+                    model: model
+                ),
+                configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
+            )
+            let videoContent = try XCTUnwrap(
+                ((try TestFixtures.requestBody(from: videoOnly.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
+            )
+            XCTAssertTrue(videoContent.contains("video 不支持"), "expected video strip for \(model)")
+        }
     }
 
     func testReminderWireRoles() async throws {

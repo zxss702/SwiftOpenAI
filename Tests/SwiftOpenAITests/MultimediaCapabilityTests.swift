@@ -28,7 +28,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("kimi-k3", true, true),
             ("deepseek-v4-flash-vision-exp", true, false),
             ("qwen-plus", false, false),
-            ("deepseek-chat", false, false),
+            ("deepseek-chat", true, false),
             ("gpt-image-1", false, false),
             ("grok-3", false, false),
             ("grok-2-vision", true, false),
@@ -56,7 +56,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("us.anthropic.claude-sonnet-5", true, false),
             ("opencode-go/kimi-k3", true, true),
             ("kimi-k2-6", true, true),
-            ("deepseek-v4-pro", false, false),
+            ("deepseek-v4-pro", true, false),
             ("minimax-m2.7", false, false),
             ("ox-alpha-free", true, true),
             ("sonar-pro", true, false),
@@ -123,8 +123,8 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("qwen3.7-max", false, false),
             ("qwen3.7-plus", true, true),
             ("qwen3.6-plus", true, true),
-            ("deepseek-v4-pro", false, false),
-            ("deepseek-v4-flash", false, false),
+            ("deepseek-v4-pro", true, false),
+            ("deepseek-v4-flash", true, false),
             ("deepseek-v4-flash-vision-exp", true, false),
             ("hy3", false, false),
             ("ox-alpha-free", true, true),
@@ -207,6 +207,16 @@ final class MultimediaCapabilityTests: XCTestCase {
             family: .openai,
             wireAPI: .completions,
             model: "kimi-k3"
+        )
+        XCTAssertTrue(cap.supportsImage)
+        XCTAssertFalse(cap.supportsVideo)
+    }
+
+    func testDeepSeekFamilyAllowsImageOnAnyModel() {
+        let cap = MultimediaCapabilityResolver.resolve(
+            family: .deepseek,
+            wireAPI: .completions,
+            model: "v4-pro"
         )
         XCTAssertTrue(cap.supportsImage)
         XCTAssertFalse(cap.supportsVideo)
