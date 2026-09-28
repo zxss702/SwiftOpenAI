@@ -27,9 +27,9 @@ enum MultimediaCapabilityResolver {
 
         var capability = discover(id)
 
-        // DeepSeek 最新代（v4-pro / v4-flash 等）均支持图像；视频仍不支持。
+        // DeepSeek v4 代（v4-pro / v4.1-flash 等）支持图像；v3 及更早代纯文本；视频均不支持。
         if family == .deepseek || id.contains("deepseek") {
-            capability.supportsImage = true
+            capability.supportsImage = isDeepSeekVisionModel(id)
             capability.supportsVideo = false
         }
 
@@ -79,6 +79,20 @@ enum MultimediaCapabilityResolver {
         return compact.hasPrefix("minimax-m") || compact.hasPrefix("minimax_m")
     }
 
+    /// DeepSeek v4 代及未标明代际的新别名（deepseek-flash 等）支持图像；
+    /// v1~v3、r1、chat/reasoner/coder/distill 等旧代为纯文本。
+    private static func isDeepSeekVisionModel(_ id: String) -> Bool {
+        let compact = id.replacingOccurrences(of: ".", with: "-").replacingOccurrences(of: "_", with: "-")
+        return !compact.contains("v1")
+            && !compact.contains("v2")
+            && !compact.contains("v3")
+            && !compact.contains("r1")
+            && !compact.contains("chat")
+            && !compact.contains("reasoner")
+            && !compact.contains("coder")
+            && !compact.contains("distill")
+    }
+
     private static func discover(_ id: String) -> MultimediaCapability {
         if id.hasPrefix("gpt-image") || id.hasPrefix("chatgpt-image") {
             return .none
@@ -90,6 +104,18 @@ enum MultimediaCapabilityResolver {
             return .none
         }
 
+        // 生成/语音/检索类非对话模型（聚合站同 id 走对话时也不吃多模态输入）
+        if id.hasPrefix("seedream") || id.hasPrefix("kling") || id.hasPrefix("happyhorse")
+            || id.hasPrefix("wan3") || id.hasPrefix("wan-") || id.hasPrefix("minimax-h")
+            || id.hasPrefix("sora") || id.hasPrefix("bocha-")
+            || id.contains("embedding") || id.contains("rerank")
+            || id.contains("-tts") || id.contains("_tts") || id.hasPrefix("tts")
+            || id.contains("speech") || id.contains("-asr") || id.contains("_asr")
+            || id.contains("-song") || id.contains("web-search") || id.contains("web-reader")
+        {
+            return .none
+        }
+
         var image = false
         var video = false
         let compact = id.replacingOccurrences(of: ".", with: "-")
@@ -98,7 +124,7 @@ enum MultimediaCapabilityResolver {
             return MultimediaCapability(supportsImage: true, supportsVideo: true)
         }
         if id.contains("deepseek") {
-            return MultimediaCapability(supportsImage: true, supportsVideo: false)
+            return MultimediaCapability(supportsImage: isDeepSeekVisionModel(id), supportsVideo: false)
         }
 
         // 通用视觉 token
@@ -217,12 +243,13 @@ enum MultimediaCapabilityResolver {
             image = true
             video = true
         }
+        // 3.6-max 与 3.7-max 同为面向 Agent 负载的纯文本旗舰；ocr 变体仅支持图像。
         if hasQwenGeneration(compact, "3-5")
-            || hasQwenGeneration(compact, "3-6")
+            || hasQwenGeneration(compact, "3-6") && !compact.contains("max")
             || hasQwenGeneration(compact, "3-8")
         {
             image = true
-            video = true
+            video = !compact.contains("ocr")
         }
         if hasQwenGeneration(compact, "3-7"), !compact.contains("max") {
             image = true
@@ -263,10 +290,14 @@ enum MultimediaCapabilityResolver {
             video = true
         }
 
-        // Xiaomi MiMo（v2.5 非 Pro；omni 另含图）
+        // Xiaomi MiMo（v2.5 非 Pro 与 v2.6 全系全模态；TTS 已被上方统一拦截；omni 另含图）
         if (compact.contains("mimo-v2-5") || compact.contains("mimo-v25")),
            !compact.contains("pro")
         {
+            image = true
+            video = true
+        }
+        if compact.contains("mimo-v2-6") || compact.contains("mimo-v26") {
             image = true
             video = true
         }
@@ -274,20 +305,23 @@ enum MultimediaCapabilityResolver {
             image = true
         }
 
-        // ByteDance Seed / Doubao
+        // ByteDance Seed / Doubao（seed-evolving 当前等价 Seed-2.1-Pro）
         if id.hasPrefix("doubao-seed") || id.contains("doubao-1.5-vision") {
             image = true
             video = true
         }
         if compact.hasPrefix("seed-1-") || compact.hasPrefix("seed-2-")
             || compact == "seed-1" || compact == "seed-2"
+            || compact.hasPrefix("seed-evolving")
         {
             image = true
             video = true
         }
 
-        // StepFun / Baidu ERNIE / NVIDIA Nemotron VL / OpenCode ox-alpha
-        if compact.hasPrefix("step-3") {
+        // StepFun（step-3.x 除 3.5 推理版外、step-5 原生支持图像与视频输入）/ Baidu ERNIE / NVIDIA Nemotron VL / OpenCode ox-alpha
+        if compact.hasPrefix("step-5")
+            || compact.hasPrefix("step-3") && !compact.hasPrefix("step-3-5")
+        {
             image = true
             video = true
         }
@@ -301,6 +335,11 @@ enum MultimediaCapabilityResolver {
         if compact.hasPrefix("ox-alpha") {
             image = true
             video = true
+        }
+
+        // Dots Studio（多模态理解，确认图像输入）
+        if compact.hasPrefix("dots-") {
+            image = true
         }
 
         // Video 通用
