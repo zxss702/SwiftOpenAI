@@ -15,6 +15,7 @@ enum ProviderFamily: String, Sendable {
     case volcengineArk
     case dashscope
     case genericOpenAICompatible
+    case tokenDance
     case deepseek
 
     var providerName: String {
@@ -33,6 +34,8 @@ enum ProviderFamily: String, Sendable {
             return "dashscope"
         case .genericOpenAICompatible:
             return "generic-openai-compatible"
+        case .tokenDance:
+            return "tokendance"
         case .deepseek:
             return "deepseek"
         }
@@ -42,7 +45,7 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .minimax:
             return .reasoningDetails
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .moonshot, .deepseek:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .moonshot, .deepseek:
             return .reasoningContent
         }
     }
@@ -54,7 +57,7 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .openai, .moonshot, .deepseek:
             return true
-        case .zhipuGLM, .minimax, .volcengineArk, .dashscope, .genericOpenAICompatible:
+        case .zhipuGLM, .minimax, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance:
             return false
         }
     }
@@ -64,7 +67,7 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .deepseek:
             return .latestReminder
-        case .moonshot, .openai:
+        case .moonshot, .openai, .tokenDance:
             return .system
         case .dashscope, .volcengineArk, .zhipuGLM, .minimax, .genericOpenAICompatible:
             return .user
@@ -79,7 +82,7 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .openai, .moonshot, .volcengineArk, .dashscope:
             return .jsonSchema
-        case .deepseek, .zhipuGLM, .genericOpenAICompatible:
+        case .deepseek, .zhipuGLM, .genericOpenAICompatible, .tokenDance:
             return .jsonObject
         case .minimax:
             return .none
@@ -197,6 +200,9 @@ enum ProviderFamilyResolver {
         if normalizedHost.contains("deepseek.com") {
             return .deepseek
         }
+        if normalizedHost == "tokendance.space" || normalizedHost.hasSuffix(".tokendance.space") {
+            return .tokenDance
+        }
         return .genericOpenAICompatible
     }
 
@@ -222,7 +228,7 @@ enum ProviderCompatibilityValidator {
                 throw OpenAIError.unsupportedParameterCombination("Moonshot 思考模型暂不支持 tools")
             }
             // Moonshot thinking 模型的 response_format 由 normalizeResponseFormat 剥离，不再硬抛错
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
             break
         }
     }
@@ -323,7 +329,7 @@ enum ProviderRequestEncoder {
             switch family {
             case .openai:
                 body["max_completion_tokens"] = maxCompletionTokens
-            case .moonshot, .minimax, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
+            case .moonshot, .minimax, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
                 body["max_tokens"] = maxCompletionTokens
             }
         }
@@ -743,7 +749,7 @@ enum ProviderRequestEncoder {
                 body["reasoning_effort"] = thinkLevel.rawValue
             }
 
-        case .deepseek, .genericOpenAICompatible:
+        case .deepseek, .genericOpenAICompatible, .tokenDance:
             guard let thinkLevel else { return }
             body["thinking"] = [
                 "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
@@ -794,7 +800,7 @@ enum ProviderRequestEncoder {
         switch family {
         case .minimax:
             break
-        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .deepseek:
+        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
             break
         }
     }
