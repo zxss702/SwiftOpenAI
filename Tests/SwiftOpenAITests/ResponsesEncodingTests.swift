@@ -97,6 +97,8 @@ final class ResponsesEncodingTests: XCTestCase {
 
         XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["max_output_tokens"] as? Int, 512)
+        XCTAssertEqual(body["temperature"] as? Double, 0.6)
+        XCTAssertEqual(body["top_p"] as? Double, 0.9)
         XCTAssertEqual(body["tool_choice"] as? String, "required")
         XCTAssertEqual((body["reasoning"] as? [String: Any])?["effort"] as? String, "high")
         XCTAssertEqual((body["metadata"] as? [String: Any])?["source"] as? String, "unit-test")

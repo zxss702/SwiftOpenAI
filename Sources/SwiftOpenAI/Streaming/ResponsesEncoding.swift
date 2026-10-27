@@ -133,7 +133,7 @@ nonisolated func makeResponsesRequestBody(
 
     var body: [String: Any] = [
         "model": modelID,
-        "input": try encodeResponsesInputItems(messages, capability: capability),
+        "input": try encodeResponsesInputItems(messages, capability: capability, wireAPI: wireAPI),
         "stream": true,
         // Align with openai/codex ResponsesApiRequest: always store=false.
         "store": false,
@@ -173,6 +173,12 @@ nonisolated func makeResponsesRequestBody(
 
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
+    }
+    if wireAPI == .codexResponses {
+        // Codex does not accept these fields, including overrides from extraBody.
+        for key in ["temperature", "top_p", "max_output_tokens"] {
+            body.removeValue(forKey: key)
+        }
     }
     return body
 }
@@ -220,7 +226,8 @@ nonisolated func appendResponsesPath(to baseURL: URL) -> URL {
 
 nonisolated func encodeResponsesInputItems(
     _ messages: [ChatQuery.ChatCompletionMessageParam],
-    capability: MultimediaCapability = .none
+    capability: MultimediaCapability = .none,
+    wireAPI: AIModelWireAPI = .responses
 ) throws -> [[String: Any]] {
     try messages.flatMap { message -> [[String: Any]] in
         switch message {
@@ -230,7 +237,7 @@ nonisolated func encodeResponsesInputItems(
             }
             return [[
                 "type": "message",
-                "role": "system",
+                "role": wireAPI == .codexResponses ? "developer" : "system",
                 "content": [["type": "input_text", "text": text]]
             ]]
 
@@ -240,7 +247,7 @@ nonisolated func encodeResponsesInputItems(
             }
             return [[
                 "type": "message",
-                "role": "system",
+                "role": wireAPI == .codexResponses ? "developer" : "system",
                 "content": [["type": "input_text", "text": text]]
             ]]
 

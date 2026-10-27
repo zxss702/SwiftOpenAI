@@ -16,17 +16,23 @@ final class CodexSupportTests: XCTestCase {
                 providerName: "openai-codex",
                 defaultHeaders: codexInfo.defaultHeaders
             ),
-            messages: [.user("hello")],
+            messages: [
+                .system("codex system"),
+                .user("hello"),
+                .reminder("codex reminder"),
+                .assistant("reply"),
+                .system("updated system")
+            ],
             frequencyPenalty: nil,
-            maxCompletionTokens: nil,
+            maxCompletionTokens: 512,
             parallelToolCalls: nil,
             presencePenalty: nil,
             responseFormat: nil,
             stop: nil,
-            temperature: nil,
+            temperature: 0.6,
             toolChoice: nil,
             tools: nil,
-            topP: nil,
+            topP: 0.9,
             thinkLevel: nil,
             extraBody: nil,
             extraHeaders: nil
@@ -44,16 +50,24 @@ final class CodexSupportTests: XCTestCase {
         XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual(body["stream"] as? Bool, true)
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
-        XCTAssertEqual(input.count, 1)
-        XCTAssertEqual(input[0]["role"] as? String, "user")
+        XCTAssertEqual(input.count, 5)
+        XCTAssertEqual(input.compactMap { $0["role"] as? String }, [
+            "developer", "user", "developer", "assistant", "developer"
+        ])
+        XCTAssertEqual(input.compactMap(Self.inputText), [
+            "codex system", "hello", "codex reminder", "reply", "updated system"
+        ])
+        XCTAssertNil(body["temperature"])
+        XCTAssertNil(body["top_p"])
+        XCTAssertNil(body["max_output_tokens"])
     }
 
-    func testMakeCodexResponsesRequestBodyPutsHistoryInInput() throws {
+    func testCodexSystemAndReminderOnlyStayInInputAsDeveloperMessages() throws {
         let body = try makeCodexResponsesRequestBody(
             modelInfo: .init(accessToken: "t", accountID: "a", modelID: "gpt-5.4"),
             messages: [
                 .system("codex system"),
-                .user("hi")
+                .reminder("codex reminder")
             ],
             frequencyPenalty: nil,
             maxCompletionTokens: nil,
@@ -73,7 +87,50 @@ final class CodexSupportTests: XCTestCase {
         XCTAssertEqual(body["store"] as? Bool, false)
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
         XCTAssertEqual(input.count, 2)
-        XCTAssertEqual(input[0]["role"] as? String, "system")
-        XCTAssertEqual(input[1]["role"] as? String, "user")
+        XCTAssertEqual(input.compactMap { $0["role"] as? String }, ["developer", "developer"])
+        XCTAssertEqual(input.compactMap(Self.inputText), ["codex system", "codex reminder"])
+    }
+
+    func testUnsupportedParametersFromExtraBodyAreOmittedOnlyForCodex() throws {
+        for wireAPI in [AIModelWireAPI.responses, .codexResponses] {
+            let body = try makeResponsesRequestBody(
+                modelID: "gpt-5.4",
+                messages: [.user("hello")],
+                frequencyPenalty: nil,
+                maxCompletionTokens: 512,
+                parallelToolCalls: nil,
+                presencePenalty: nil,
+                responseFormat: nil,
+                stop: nil,
+                temperature: 0.6,
+                toolChoice: nil,
+                tools: nil,
+                topP: 0.9,
+                thinkLevel: nil,
+                extraBody: [
+                    "temperature": .double(0.4),
+                    "top_p": .double(0.8),
+                    "max_output_tokens": .int(1024),
+                    "parallel_tool_calls": .bool(true)
+                ],
+                wireAPI: wireAPI
+            )
+
+            if wireAPI == .codexResponses {
+                XCTAssertNil(body["temperature"])
+                XCTAssertNil(body["top_p"])
+                XCTAssertNil(body["max_output_tokens"])
+            } else {
+                XCTAssertEqual(body["temperature"] as? Double, 0.4)
+                XCTAssertEqual(body["top_p"] as? Double, 0.8)
+                XCTAssertEqual(body["max_output_tokens"] as? Int, 1024)
+            }
+            XCTAssertEqual(body["parallel_tool_calls"] as? Bool, true)
+        }
+    }
+
+    private static func inputText(of item: [String: Any]) -> String? {
+        let content = item["content"] as? [[String: Any]]
+        return content?.first?["text"] as? String
     }
 }
