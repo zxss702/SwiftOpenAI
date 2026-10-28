@@ -45,6 +45,7 @@ final class ResponsesEncodingTests: XCTestCase {
         XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["stream"] as? Bool, true)
         XCTAssertEqual(body["store"] as? Bool, false)
+        XCTAssertEqual(body["include"] as? [String], ["reasoning.encrypted_content"])
     }
 
     func testRequestBodyMapsMessagesToolsReasoningAndText() throws {

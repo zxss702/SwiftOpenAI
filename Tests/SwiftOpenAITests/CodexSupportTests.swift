@@ -49,6 +49,7 @@ final class CodexSupportTests: XCTestCase {
         XCTAssertNil(body["instructions"])
         XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual(body["stream"] as? Bool, true)
+        XCTAssertEqual(body["include"] as? [String], ["reasoning.encrypted_content"])
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
         XCTAssertEqual(input.count, 5)
         XCTAssertEqual(input.compactMap { $0["role"] as? String }, [

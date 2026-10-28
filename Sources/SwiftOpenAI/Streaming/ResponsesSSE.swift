@@ -9,6 +9,11 @@ struct ResponsesStreamState {
     var toolCallIndexByItemID: [String: Int] = [:]
     var nextToolCallIndex: Int = 0
     var prefersReasoningText = false
+    var outputItemsByIndex: [Int: [String: AnyCodableValue]] = [:]
+
+    var outputItems: [[String: AnyCodableValue]] {
+        outputItemsByIndex.keys.sorted().compactMap { outputItemsByIndex[$0] }
+    }
 }
 
 typealias CodexResponsesStreamState = ResponsesStreamState
@@ -125,6 +130,13 @@ private nonisolated func processResponsesSSELine(
 
     case "response.output_item.added", "response.output_item.done":
         guard let item = json["item"] as? [String: Any] else { return }
+        if type == "response.output_item.done", let index = json["output_index"] as? Int {
+            let itemData = try JSONSerialization.data(withJSONObject: item)
+            state.outputItemsByIndex[index] = try JSONDecoder().decode(
+                [String: AnyCodableValue].self,
+                from: itemData
+            )
+        }
         try await applyResponsesOutputItem(
             item,
             actorHelper: actorHelper,
@@ -134,6 +146,12 @@ private nonisolated func processResponsesSSELine(
     case "response.completed":
         if let response = json["response"] as? [String: Any] {
             state.responseID = response["id"] as? String ?? state.responseID
+            // The completed output is authoritative; some providers only send item.done events.
+            if let output = response["output"] as? [[String: Any]] {
+                let outputData = try JSONSerialization.data(withJSONObject: output)
+                let items = try JSONDecoder().decode([[String: AnyCodableValue]].self, from: outputData)
+                state.outputItemsByIndex = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($0.offset, $0.element) })
+            }
             if let usage = response["usage"] as? [String: Any] {
                 state.usage = makeUsageInfo(from: usage)
                 await actorHelper.setUsage(state.usage)

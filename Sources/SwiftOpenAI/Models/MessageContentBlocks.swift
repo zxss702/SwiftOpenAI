@@ -1,24 +1,29 @@
 import Foundation
 import Crypto
 
-/// 随消息/结果携带的扩展内容块（Anthropic 原样 blocks、Files API 绑定等）。
+/// 随消息/结果携带的扩展内容块（Responses output、Anthropic blocks、Files API 绑定等）。
 public struct MessageContentBlocks: Codable, Sendable, Hashable {
     /// Anthropic 原样 content blocks（thinking/signature/tool_use…）
     public var anthropic: [[String: AnyCodableValue]]?
     /// 已上传文件绑定：key = `sha256Hex + basePath`（厂商根，如 `api.deepseek.com/v1`），不存原始 Data
     public var fileBindings: [String: FileBinding]?
+    /// Responses 原始 output items，保留 reasoning/encrypted_content、phase 及输出顺序。
+    public var responses: [[String: AnyCodableValue]]?
 
     public init(
         anthropic: [[String: AnyCodableValue]]? = nil,
-        fileBindings: [String: FileBinding]? = nil
+        fileBindings: [String: FileBinding]? = nil,
+        responses: [[String: AnyCodableValue]]? = nil
     ) {
         self.anthropic = anthropic
         self.fileBindings = fileBindings
+        self.responses = responses
     }
 
     private enum CodingKeys: String, CodingKey {
         case anthropic
         case fileBindings = "file_bindings"
+        case responses
     }
 
     public static func anthropicOnly(_ blocks: [[String: AnyCodableValue]]) -> MessageContentBlocks {
@@ -57,6 +62,9 @@ public struct MessageContentBlocks: Codable, Sendable, Hashable {
         var copy = self
         if let anthropic = other.anthropic {
             copy.anthropic = anthropic
+        }
+        if let responses = other.responses {
+            copy.responses = responses
         }
         copy.mergeFileBindings(other.fileBindings)
         return copy

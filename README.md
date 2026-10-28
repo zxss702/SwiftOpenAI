@@ -102,6 +102,8 @@ let anthropic = AIModelInfoValue.anthropic(
 
 `responses` 与 `codex` 共用 Responses 协议内核。历史消息（含 system / reminder）按原顺序编进 `input`，不使用 `instructions`；`codex` 会将 system / reminder 编码为 `developer` 消息，并省略 `temperature`、`top_p`、`max_output_tokens`（包括 `extraBody` 中的同名字段）。`anthropic` 在 Encoding 层把 Chat Completions 消息映射到 Anthropic `/v1/messages`。端点统一用完整 `baseURL`（如 `https://api.deepseek.com`、`http://localhost:8080`），库再按线路追加资源路径。
 
+继续 Responses/Codex 对话时，将 `result.contentBlocks` 传给下一条历史 `.assistant(..., contentBlocks: result.contentBlocks)`。库会保存并优先回放 `contentBlocks.responses` 中的原始 output items，保留加密 reasoning、assistant `phase` 和输出顺序；旧历史没有这些数据时仍按文本和工具调用编码。OpenAI Responses/Codex 默认请求 `reasoning.encrypted_content`，`extraBody` 仍可覆盖 `include`。
+
 ### 一行创建对话 🎉
 
 ```swift

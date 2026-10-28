@@ -170,6 +170,9 @@ nonisolated func makeResponsesRequestBody(
     if let reasoning = encodeResponsesReasoning(thinkLevel: thinkLevel) {
         body["reasoning"] = reasoning
     }
+    if wireAPI == .codexResponses || family == .openai {
+        body["include"] = ["reasoning.encrypted_content"]
+    }
 
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
@@ -259,6 +262,9 @@ nonisolated func encodeResponsesInputItems(
             ]]
 
         case .assistant(let assistantMessage):
+            if let output = assistantMessage.contentBlocks?.responses, !output.isEmpty {
+                return output.map { $0.toAnyDictionary() }
+            }
             var items: [[String: Any]] = []
             if let content = assistantMessage.content, !content.isEmpty {
                 items.append([
@@ -267,8 +273,8 @@ nonisolated func encodeResponsesInputItems(
                     "content": [["type": "output_text", "text": content]]
                 ])
             }
-            // Previous assistant reasoning is not valid as a message input item for
-            // Responses. We only replay visible assistant output plus tool calls.
+            // Plain reasoning summaries cannot replace encrypted Responses reasoning items.
+            // History without preserved output falls back to visible text and tool calls.
             for toolCall in assistantMessage.toolCalls ?? [] {
                 items.append([
                     "type": "function_call",

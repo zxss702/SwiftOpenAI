@@ -358,7 +358,7 @@ public struct AssistantMessageParam: Codable, Sendable {
     /// 如果 assistant 消息包含工具调用，则此字段为必填。
     public let reasoningContent: String?
 
-    /// 扩展 content blocks（Anthropic 原样回传、Files 绑定等）。
+    /// 扩展 content blocks（Responses output / Anthropic blocks 原样回传、Files 绑定等）。
     public let contentBlocks: MessageContentBlocks?
     
     /// 创建助手消息参数
