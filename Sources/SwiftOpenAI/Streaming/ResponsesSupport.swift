@@ -167,7 +167,9 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         contentBlocks: mergeContentBlocksForResult(
             anthropic: nil,
             fileBindings: preparedRequest.fileBindings,
-            responses: ResponsesMessageContext(outputItems: state.outputItems)
+            responses: ResponsesMessageContext(outputItems: state.outputItems),
+            codexSessionID: metadata.providerName == "openai-codex"
+                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil
         )
     )
 }

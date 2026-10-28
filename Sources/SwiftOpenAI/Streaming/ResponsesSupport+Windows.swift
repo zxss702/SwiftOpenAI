@@ -14,7 +14,9 @@ nonisolated func executeResponsesStreamWithURLSession(
             action: action,
             completion: continuation,
             metadata: preparedRequest.metadata,
-            fileBindings: preparedRequest.fileBindings
+            fileBindings: preparedRequest.fileBindings,
+            codexSessionID: preparedRequest.metadata.providerName == "openai-codex"
+                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil
         )
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         let task = session.dataTask(with: preparedRequest.urlRequest)
@@ -27,6 +29,7 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
     private let completion: CheckedContinuation<OpenAIChatResult, Error>
     private let lock = NSLock()
     private let fileBindings: [String: FileBinding]
+    private let codexSessionID: String?
 
     private(set) var actorHelper = OpenAISendMessageValueHelper()
     private(set) var state = ResponsesStreamState()
@@ -41,12 +44,14 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
         action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void,
         completion: CheckedContinuation<OpenAIChatResult, Error>,
         metadata: ChatResponseMetadata,
-        fileBindings: [String: FileBinding]
+        fileBindings: [String: FileBinding],
+        codexSessionID: String?
     ) {
         self.action = action
         self.completion = completion
         self.metadata = metadata
         self.fileBindings = fileBindings
+        self.codexSessionID = codexSessionID
     }
 
     func urlSession(
@@ -138,7 +143,8 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                     contentBlocks: mergeContentBlocksForResult(
                         anthropic: nil,
                         fileBindings: fileBindings,
-                        responses: ResponsesMessageContext(outputItems: state.outputItems)
+                        responses: ResponsesMessageContext(outputItems: state.outputItems),
+                        codexSessionID: codexSessionID
                     )
                 )
                 session.finishTasksAndInvalidate()

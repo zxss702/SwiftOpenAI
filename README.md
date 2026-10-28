@@ -104,6 +104,8 @@ let anthropic = AIModelInfoValue.anthropic(
 
 继续 Responses/Codex 对话时，将 `result.contentBlocks` 传给下一条历史 `.assistant(..., contentBlocks: result.contentBlocks)`。正文、思考文本和工具调用始终来自 assistant 的 `content`、`reasoningContent`、`toolCalls`；`contentBlocks.responses` 只保存隐藏字段、文本范围和工具索引，用于还原加密 reasoning、assistant `phase` 和输出顺序。编辑这些 C 字段后，旧隐藏上下文自动失效，按当前 C 字段重新编码。旧版原始 output blocks 会在解码时转换为补充上下文。OpenAI Responses/Codex 默认请求 `reasoning.encrypted_content`，`extraBody` 仍可覆盖 `include`。
 
+Codex 还会通过 `session-id` 请求头维持 ChatGPT 后端的缓存亲和性：首次请求生成标识，通过 `result.contentBlocks.codexSessionID` 持久化，后续请求复用历史中最近的标识。调用方可通过 `extraHeaders["session-id"]` 显式指定；此标识不写入正文，也不影响普通 Responses 线路。
+
 ### 一行创建对话 🎉
 
 ```swift

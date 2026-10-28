@@ -92,6 +92,17 @@ nonisolated func makeResponsesURLRequest(
     for (key, value) in config.defaultHeaders {
         request.setValue(value, forHTTPHeaderField: key)
     }
+    if config.providerName == "openai-codex",
+       request.value(forHTTPHeaderField: "session-id")?.isEmpty != false {
+        // The ChatGPT backend derives cache affinity from session-id, independently of
+        // the public Responses API's prompt_cache_key. Continue the persisted conversation.
+        let sessionID = messages.reversed().lazy.compactMap { message -> String? in
+            guard case .assistant(let assistant) = message,
+                  let id = assistant.contentBlocks?.codexSessionID, !id.isEmpty else { return nil }
+            return id
+        }.first ?? UUID().uuidString
+        request.setValue(sessionID, forHTTPHeaderField: "session-id")
+    }
 
     return PreparedResponsesRequest(
         urlRequest: request,
