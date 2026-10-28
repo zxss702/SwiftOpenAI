@@ -20,6 +20,18 @@ public struct ResponsesMessageContext: Codable, Sendable, Hashable {
     public let sourceHash: String
 
     public init?(outputItems: [[String: AnyCodableValue]]) {
+        guard let message = Self.assistantMessage(from: outputItems),
+              let context = message.contentBlocks?.responses else { return nil }
+        self = context
+    }
+
+    private init(items: [Item], sourceHash: String) {
+        self.items = items
+        self.sourceHash = sourceHash
+    }
+
+    /// 同一次映射生成 C 字段及隐藏信息，避免分别解析后内容不一致。
+    nonisolated static func assistantMessage(from outputItems: [[String: AnyCodableValue]]) -> AssistantMessageParam? {
         guard !outputItems.isEmpty else { return nil }
         var text = ""
         var reasoning = ""
@@ -68,8 +80,12 @@ public struct ResponsesMessageContext: Codable, Sendable, Hashable {
             items.append(Item(metadata: metadata, content: content, summary: summary, toolCallIndex: toolCallIndex))
         }
         guard let hash = Self.hash(content: text, reasoning: reasoning, calls: calls) else { return nil }
-        self.items = items
-        self.sourceHash = hash
+        return AssistantMessageParam(
+            content: text,
+            toolCalls: calls,
+            reasoningContent: reasoning,
+            contentBlocks: MessageContentBlocks(responses: ResponsesMessageContext(items: items, sourceHash: hash))
+        )
     }
 
     nonisolated func inputItems(for assistant: AssistantMessageParam) -> [[String: Any]]? {

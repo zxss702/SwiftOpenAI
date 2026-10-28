@@ -35,6 +35,11 @@ nonisolated func processResponsesSSEBytes(
             metadata: &metadata
         )
     }
+
+    if finalize, let message = ResponsesMessageContext.assistantMessage(from: state.outputItems) {
+        // Final output also covers streams that omit text/reasoning deltas.
+        await actorHelper.setResponsesMessage(message)
+    }
 }
 
 /// Codex-compatible alias used by existing tests.

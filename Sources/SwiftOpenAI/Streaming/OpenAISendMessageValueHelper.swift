@@ -90,6 +90,43 @@ public actor OpenAISendMessageValueHelper {
         subThinkingText += thinkingText
         subText += text
     }
+
+    /// 用最终 Responses output 校准 C 字段，不重复发送已累计的 delta。
+    func setResponsesMessage(_ message: AssistantMessageParam) {
+        let text = message.content ?? ""
+        if !text.utf8.elementsEqual(fullText.utf8) {
+            if text.hasPrefix(fullText) {
+                subText += String(text.dropFirst(fullText.count))
+            } else {
+                subText = text
+            }
+            fullText = text
+        }
+        let thinking = message.reasoningContent ?? ""
+        if !thinking.utf8.elementsEqual(fullThinkingText.utf8) {
+            if thinking.hasPrefix(fullThinkingText) {
+                subThinkingText += String(thinking.dropFirst(fullThinkingText.count))
+            } else {
+                subThinkingText = thinking
+            }
+            fullThinkingText = thinking
+        }
+        let calls = message.toolCalls ?? []
+        if calls.count != allToolCalls.count || calls.enumerated().contains(where: { index, call in
+            guard index < allToolCalls.count else { return true }
+            let existing = allToolCalls[index]
+            return existing.index != index || existing.id != call.id || existing.type != call.type
+                || existing.function?.name != call.function.name
+                || existing.function?.arguments != call.function.arguments
+        }) {
+            allToolCalls = calls.enumerated().map { index, call in
+                .init(index: index, id: call.id, type: call.type, function: .init(
+                    name: call.function.name, arguments: call.function.arguments
+                ))
+            }
+            toolCallsDirty = true
+        }
+    }
     
     /// 更新指定索引的工具调用
     ///
