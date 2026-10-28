@@ -3,6 +3,8 @@ import Foundation
 struct AnthropicStreamState {
     var sseBuffer = SSEByteBuffer()
     var usage: ChatStreamResult.Choice.UsageInfo?
+    // Preserve provider counters across events before normalizing cached input.
+    var rawUsage: [String: Any] = [:]
     var toolCallIndexByContentIndex: [Int: Int] = [:]
     var nextToolCallIndex: Int = 0
     /// Sparse-by-index content blocks, aligned with Anthropic content indices.
@@ -69,7 +71,10 @@ private nonisolated func processAnthropicSSELine(
                 )
             }
             if let usage = message["usage"] as? [String: Any] {
-                state.usage = makeAnthropicUsageInfo(from: usage, previous: state.usage)
+                for (key, value) in usage {
+                    state.rawUsage[key] = value
+                }
+                state.usage = makeAnthropicUsageInfo(from: state.rawUsage, previous: state.usage)
                 await actorHelper.setUsage(state.usage)
             }
         }
@@ -170,7 +175,10 @@ private nonisolated func processAnthropicSSELine(
 
     case "message_delta":
         if let usage = json["usage"] as? [String: Any] {
-            state.usage = makeAnthropicUsageInfo(from: usage, previous: state.usage)
+            for (key, value) in usage {
+                state.rawUsage[key] = value
+            }
+            state.usage = makeAnthropicUsageInfo(from: state.rawUsage, previous: state.usage)
             await actorHelper.setUsage(state.usage)
         }
 
@@ -200,11 +208,19 @@ nonisolated func makeAnthropicUsageInfo(
     from usage: [String: Any],
     previous: ChatStreamResult.Choice.UsageInfo?
 ) -> ChatStreamResult.Choice.UsageInfo {
-    let input = usage["input_tokens"] as? Int ?? previous?.promptTokens
+    let input: Int?
+    let cacheMiss: Int?
+    if let uncached = usage["input_tokens"] as? Int {
+        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+        let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
+        input = uncached + cacheRead + cacheCreation
+        cacheMiss = usage["cache_read_input_tokens"] is Int ? uncached + cacheCreation : nil
+    } else {
+        input = previous?.promptTokens
+        cacheMiss = previous?.promptCacheMissTokens
+    }
     let output = usage["output_tokens"] as? Int ?? previous?.completionTokens
-    let cacheRead = usage["cache_read_input_tokens"] as? Int
-        ?? usage["cache_creation_input_tokens"] as? Int
-        ?? previous?.cachedTokens
+    let cacheRead = usage["cache_read_input_tokens"] as? Int ?? previous?.promptCacheHitTokens
     let total: Int?
     if let input, let output {
         total = input + output
@@ -216,8 +232,8 @@ nonisolated func makeAnthropicUsageInfo(
         completionTokens: output,
         totalTokens: total,
         cachedTokens: cacheRead,
-        promptCacheHitTokens: usage["cache_read_input_tokens"] as? Int ?? previous?.promptCacheHitTokens,
-        promptCacheMissTokens: previous?.promptCacheMissTokens,
+        promptCacheHitTokens: cacheRead,
+        promptCacheMissTokens: cacheMiss,
         reasoningTokens: previous?.reasoningTokens
     )
 }
