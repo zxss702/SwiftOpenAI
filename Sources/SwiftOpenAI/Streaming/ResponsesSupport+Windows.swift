@@ -33,7 +33,6 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
     private let fileBindings: [String: FileBinding]
     private let codexSessionID: String?
     private let codexTurnScope: String?
-    private let sentCodexTurnState: String?
     private var codexTurnState: String?
 
     private(set) var actorHelper = OpenAISendMessageValueHelper()
@@ -60,7 +59,6 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
         self.fileBindings = fileBindings
         self.codexSessionID = codexSessionID
         self.codexTurnScope = codexTurnScope
-        self.sentCodexTurnState = codexTurnState
         self.codexTurnState = codexTurnState
     }
 
@@ -79,12 +77,8 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                 resolvedModel: metadata.resolvedModel,
                 resolvedBasePath: metadata.resolvedBasePath
             )
-            if let codexTurnScope {
-                let returnedState = httpResponse.value(forHTTPHeaderField: "x-codex-turn-state")
-                codexTurnState = codexTurnState ?? returnedState
-                #if DEBUG
-                print("SwiftOpenAI Codex routing: scope=\(codexTurnScope) sent_turn_state=\(sentCodexTurnState != nil) received_turn_state=\(returnedState != nil) request_id=\(metadata.requestID ?? "nil")")
-                #endif
+            if codexTurnScope != nil {
+                codexTurnState = codexTurnState ?? httpResponse.value(forHTTPHeaderField: "x-codex-turn-state")
             }
         }
         completionHandler(.allow)

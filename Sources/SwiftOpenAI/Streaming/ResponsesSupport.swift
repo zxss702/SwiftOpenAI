@@ -125,11 +125,6 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         ProviderResponseNormalizer.requestID(from: response.headers)
     )
     let codexTurnState = preparedRequest.codexTurnState(received: response.headers.first(name: "x-codex-turn-state"))
-    #if DEBUG
-    if preparedRequest.codexTurnScope != nil {
-        print("SwiftOpenAI Codex routing: scope=\(preparedRequest.codexTurnScope ?? "nil") sent_turn_state=\(preparedRequest.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state") != nil) received_turn_state=\(response.headers.first(name: "x-codex-turn-state") != nil) request_id=\(metadata.requestID ?? "nil")")
-    }
-    #endif
 
     for try await part in response.body {
         try Task.checkCancellation()
