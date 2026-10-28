@@ -262,8 +262,8 @@ nonisolated func encodeResponsesInputItems(
             ]]
 
         case .assistant(let assistantMessage):
-            if let output = assistantMessage.contentBlocks?.responses, !output.isEmpty {
-                return output.map { $0.toAnyDictionary() }
+            if let output = assistantMessage.contentBlocks?.responses?.inputItems(for: assistantMessage) {
+                return output
             }
             var items: [[String: Any]] = []
             if let content = assistantMessage.content, !content.isEmpty {

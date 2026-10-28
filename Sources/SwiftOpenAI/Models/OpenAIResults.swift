@@ -68,7 +68,7 @@ public struct OpenAIChatResult: Sendable {
     /// 实际使用的基础路径
     public let resolvedBasePath: String?
 
-    /// 扩展 content blocks（Responses 原始 output、Anthropic blocks、Files 绑定等）
+    /// 扩展 content blocks（Responses 隐藏上下文、Anthropic blocks、Files 绑定等）
     public let contentBlocks: MessageContentBlocks?
     
     public init(

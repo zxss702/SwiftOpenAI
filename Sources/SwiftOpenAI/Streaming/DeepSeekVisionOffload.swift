@@ -178,16 +178,16 @@ private nonisolated func decodeDataURLImage(_ url: String) -> DecodedDataURLImag
 nonisolated func mergeContentBlocksForResult(
     anthropic: [[String: AnyCodableValue]]?,
     fileBindings: [String: FileBinding],
-    responses: [[String: AnyCodableValue]]? = nil
+    responses: ResponsesMessageContext? = nil
 ) -> MessageContentBlocks? {
     if (anthropic == nil || anthropic?.isEmpty == true)
         && fileBindings.isEmpty
-        && (responses == nil || responses?.isEmpty == true) {
+        && responses == nil {
         return nil
     }
     return MessageContentBlocks(
         anthropic: (anthropic?.isEmpty == false) ? anthropic : nil,
         fileBindings: fileBindings.isEmpty ? nil : fileBindings,
-        responses: (responses?.isEmpty == false) ? responses : nil
+        responses: responses
     )
 }

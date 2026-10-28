@@ -138,7 +138,7 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                     contentBlocks: mergeContentBlocksForResult(
                         anthropic: nil,
                         fileBindings: fileBindings,
-                        responses: state.outputItems
+                        responses: ResponsesMessageContext(outputItems: state.outputItems)
                     )
                 )
                 session.finishTasksAndInvalidate()

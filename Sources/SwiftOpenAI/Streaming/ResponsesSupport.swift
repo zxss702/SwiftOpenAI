@@ -167,7 +167,7 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         contentBlocks: mergeContentBlocksForResult(
             anthropic: nil,
             fileBindings: preparedRequest.fileBindings,
-            responses: state.outputItems
+            responses: ResponsesMessageContext(outputItems: state.outputItems)
         )
     )
 }

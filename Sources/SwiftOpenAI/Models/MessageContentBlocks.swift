@@ -1,19 +1,19 @@
 import Foundation
 import Crypto
 
-/// 随消息/结果携带的扩展内容块（Responses output、Anthropic blocks、Files API 绑定等）。
+/// 随消息/结果携带的扩展内容块（Responses 隐藏上下文、Anthropic blocks、Files API 绑定等）。
 public struct MessageContentBlocks: Codable, Sendable, Hashable {
     /// Anthropic 原样 content blocks（thinking/signature/tool_use…）
     public var anthropic: [[String: AnyCodableValue]]?
     /// 已上传文件绑定：key = `sha256Hex + basePath`（厂商根，如 `api.deepseek.com/v1`），不存原始 Data
     public var fileBindings: [String: FileBinding]?
-    /// Responses 原始 output items，保留 reasoning/encrypted_content、phase 及输出顺序。
-    public var responses: [[String: AnyCodableValue]]?
+    /// Responses 隐藏字段和分段映射；正文和工具参数始终来自 assistant 的 C 字段。
+    public var responses: ResponsesMessageContext?
 
     public init(
         anthropic: [[String: AnyCodableValue]]? = nil,
         fileBindings: [String: FileBinding]? = nil,
-        responses: [[String: AnyCodableValue]]? = nil
+        responses: ResponsesMessageContext? = nil
     ) {
         self.anthropic = anthropic
         self.fileBindings = fileBindings
@@ -24,6 +24,17 @@ public struct MessageContentBlocks: Codable, Sendable, Hashable {
         case anthropic
         case fileBindings = "file_bindings"
         case responses
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        anthropic = try container.decodeIfPresent([[String: AnyCodableValue]].self, forKey: .anthropic)
+        fileBindings = try container.decodeIfPresent([String: FileBinding].self, forKey: .fileBindings)
+        if let legacy = try? container.decode([[String: AnyCodableValue]].self, forKey: .responses) {
+            responses = ResponsesMessageContext(outputItems: legacy)
+        } else {
+            responses = try container.decodeIfPresent(ResponsesMessageContext.self, forKey: .responses)
+        }
     }
 
     public static func anthropicOnly(_ blocks: [[String: AnyCodableValue]]) -> MessageContentBlocks {
