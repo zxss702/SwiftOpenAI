@@ -59,17 +59,58 @@ final class CodexSessionAffinityTests: XCTestCase {
             .assistant("history", contentBlocks: MessageContentBlocks(codexSessionID: "codex-session")), .user("continue")
         ], providerName: "openai-responses")
         XCTAssertNil(prepared.urlRequest.value(forHTTPHeaderField: "session-id"))
+        XCTAssertNil(prepared.codexTurnState(received: "codex-only-token"))
+    }
+
+    func testTurnStateIsReplayedForApprovalAndClearedForNewUserAnswerOrAccount() throws {
+        let initial: [OpenAIMessage] = [.system("rules"), .user("你好")]
+        let first = try prepare(messages: initial)
+        let sessionID = try XCTUnwrap(first.urlRequest.value(forHTTPHeaderField: "session-id"))
+        let scope = try XCTUnwrap(first.codexTurnScope)
+        XCTAssertNil(first.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
+        let received = try XCTUnwrap(first.codexTurnState(received: "server-turn-state"))
+        let call = AssistantMessageParam.ToolCallParam(id: "call_1", function: .init(name: "message_user", arguments: "{}"))
+        let blocks = MessageContentBlocks(
+            responses: ResponsesMessageContext(outputItems: [[
+                "type": .string("function_call"), "call_id": .string("call_1"),
+                "name": .string("message_user"), "arguments": .string("{}")
+            ]]),
+            codexSessionID: sessionID, codexTurnState: received, codexTurnScope: scope
+        )
+        let assistant = OpenAIMessage.assistant("", toolCalls: [call], contentBlocks: blocks)
+        let restored = try JSONDecoder().decode(OpenAIMessage.self, from: JSONEncoder().encode(assistant))
+        let continuation = initial + [restored, .tool("已提交", toolCallId: "call_1"), .reminder("已批准")]
+        let next = try prepare(messages: continuation)
+        XCTAssertEqual(next.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"), "server-turn-state")
+        XCTAssertEqual(next.codexTurnScope, scope)
+        XCTAssertEqual(next.codexTurnState(received: nil), received)
+        XCTAssertEqual(next.codexTurnState(received: "replacement-token"), received)
+
+        let newUser = try prepare(messages: continuation + [.user("新问题")])
+        XCTAssertNil(newUser.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
+        XCTAssertEqual(newUser.urlRequest.value(forHTTPHeaderField: "session-id"), sessionID)
+        let completed = try prepare(messages: continuation + [.assistant("完成", contentBlocks: blocks)])
+        XCTAssertNil(completed.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
+        let otherAccount = try prepare(messages: continuation, accountID: "another-account")
+        XCTAssertNil(otherAccount.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
+        let otherSession = try prepare(messages: continuation, headers: ["session-id": "another-session"])
+        XCTAssertNil(otherSession.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
+        let edited = try prepare(messages: initial + [
+            .assistant("edited", toolCalls: [call], contentBlocks: blocks), .tool("已提交", toolCallId: "call_1")
+        ])
+        XCTAssertNil(edited.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state"))
     }
 
     private func prepare(
-        messages: [OpenAIMessage], headers: [String: String]? = nil, providerName: String = "openai-codex"
+        messages: [OpenAIMessage], headers: [String: String]? = nil, providerName: String = "openai-codex",
+        accountID: String = "test-account"
     ) throws -> PreparedResponsesRequest {
         let baseURL = providerName == "openai-codex" ? "https://chatgpt.com/backend-api/codex" : "https://api.openai.com/v1"
         return try makeResponsesURLRequest(
             config: ResponsesRequestConfig(
                 modelID: "gpt-6.1-sol", baseURL: try APIBaseURL.parse(baseURL),
                 resolvedBasePath: APIBaseURL.configuredPath(of: baseURL), providerName: providerName,
-                defaultHeaders: ["Authorization": "Bearer test-token", "ChatGPT-Account-ID": "test-account"]
+                defaultHeaders: ["Authorization": "Bearer test-token", "ChatGPT-Account-ID": accountID]
             ),
             messages: messages, frequencyPenalty: nil, maxCompletionTokens: nil, parallelToolCalls: true,
             presencePenalty: nil, responseFormat: nil, stop: nil, temperature: nil, toolChoice: nil,

@@ -124,6 +124,12 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
     var metadata = preparedRequest.metadata.withRequestID(
         ProviderResponseNormalizer.requestID(from: response.headers)
     )
+    let codexTurnState = preparedRequest.codexTurnState(received: response.headers.first(name: "x-codex-turn-state"))
+    #if DEBUG
+    if preparedRequest.codexTurnScope != nil {
+        print("SwiftOpenAI Codex routing: scope=\(preparedRequest.codexTurnScope ?? "nil") sent_turn_state=\(preparedRequest.urlRequest.value(forHTTPHeaderField: "x-codex-turn-state") != nil) received_turn_state=\(response.headers.first(name: "x-codex-turn-state") != nil) request_id=\(metadata.requestID ?? "nil")")
+    }
+    #endif
 
     for try await part in response.body {
         try Task.checkCancellation()
@@ -169,7 +175,9 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
             fileBindings: preparedRequest.fileBindings,
             responses: ResponsesMessageContext(outputItems: state.outputItems),
             codexSessionID: metadata.providerName == "openai-codex"
-                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil
+                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil,
+            codexTurnState: codexTurnState,
+            codexTurnScope: codexTurnState == nil ? nil : preparedRequest.codexTurnScope
         )
     )
 }

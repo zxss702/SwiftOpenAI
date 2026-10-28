@@ -179,7 +179,9 @@ nonisolated func mergeContentBlocksForResult(
     anthropic: [[String: AnyCodableValue]]?,
     fileBindings: [String: FileBinding],
     responses: ResponsesMessageContext? = nil,
-    codexSessionID: String? = nil
+    codexSessionID: String? = nil,
+    codexTurnState: String? = nil,
+    codexTurnScope: String? = nil
 ) -> MessageContentBlocks? {
     if (anthropic == nil || anthropic?.isEmpty == true)
         && fileBindings.isEmpty
@@ -191,6 +193,8 @@ nonisolated func mergeContentBlocksForResult(
         anthropic: (anthropic?.isEmpty == false) ? anthropic : nil,
         fileBindings: fileBindings.isEmpty ? nil : fileBindings,
         responses: responses,
-        codexSessionID: codexSessionID
+        codexSessionID: codexSessionID,
+        codexTurnState: codexTurnState,
+        codexTurnScope: codexTurnScope
     )
 }

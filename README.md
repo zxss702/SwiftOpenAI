@@ -106,6 +106,8 @@ let anthropic = AIModelInfoValue.anthropic(
 
 Codex 还会通过 `session-id` 请求头维持 ChatGPT 后端的缓存亲和性：首次请求生成标识，通过 `result.contentBlocks.codexSessionID` 持久化，后续请求复用历史中最近的标识。调用方可通过 `extraHeaders["session-id"]` 显式指定；此标识不写入正文，也不影响普通 Responses 线路。
 
+同一用户轮次内的工具续调还会回传服务端返回的 `x-codex-turn-state`，由 `contentBlocks.codexTurnState` 携带；遇到新 user 消息、无工具调用的 assistant 答复、账户/模型/会话变更或对应 C 内容编辑时不复用旧令牌。Debug 构建会打印 `SwiftOpenAI Codex routing` 摘要，显示令牌是否收到/回传，不打印令牌原文。
+
 ### 一行创建对话 🎉
 
 ```swift

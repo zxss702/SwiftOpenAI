@@ -16,7 +16,9 @@ nonisolated func executeResponsesStreamWithURLSession(
             metadata: preparedRequest.metadata,
             fileBindings: preparedRequest.fileBindings,
             codexSessionID: preparedRequest.metadata.providerName == "openai-codex"
-                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil
+                ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil,
+            codexTurnScope: preparedRequest.codexTurnScope,
+            codexTurnState: preparedRequest.codexTurnState(received: nil)
         )
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         let task = session.dataTask(with: preparedRequest.urlRequest)
@@ -30,6 +32,9 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
     private let lock = NSLock()
     private let fileBindings: [String: FileBinding]
     private let codexSessionID: String?
+    private let codexTurnScope: String?
+    private let sentCodexTurnState: String?
+    private var codexTurnState: String?
 
     private(set) var actorHelper = OpenAISendMessageValueHelper()
     private(set) var state = ResponsesStreamState()
@@ -45,13 +50,18 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
         completion: CheckedContinuation<OpenAIChatResult, Error>,
         metadata: ChatResponseMetadata,
         fileBindings: [String: FileBinding],
-        codexSessionID: String?
+        codexSessionID: String?,
+        codexTurnScope: String?,
+        codexTurnState: String?
     ) {
         self.action = action
         self.completion = completion
         self.metadata = metadata
         self.fileBindings = fileBindings
         self.codexSessionID = codexSessionID
+        self.codexTurnScope = codexTurnScope
+        self.sentCodexTurnState = codexTurnState
+        self.codexTurnState = codexTurnState
     }
 
     func urlSession(
@@ -69,6 +79,13 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                 resolvedModel: metadata.resolvedModel,
                 resolvedBasePath: metadata.resolvedBasePath
             )
+            if let codexTurnScope {
+                let returnedState = httpResponse.value(forHTTPHeaderField: "x-codex-turn-state")
+                codexTurnState = codexTurnState ?? returnedState
+                #if DEBUG
+                print("SwiftOpenAI Codex routing: scope=\(codexTurnScope) sent_turn_state=\(sentCodexTurnState != nil) received_turn_state=\(returnedState != nil) request_id=\(metadata.requestID ?? "nil")")
+                #endif
+            }
         }
         completionHandler(.allow)
     }
@@ -144,7 +161,9 @@ private final class ResponsesStreamDelegate: NSObject, URLSessionDataDelegate, @
                         anthropic: nil,
                         fileBindings: fileBindings,
                         responses: ResponsesMessageContext(outputItems: state.outputItems),
-                        codexSessionID: codexSessionID
+                        codexSessionID: codexSessionID,
+                        codexTurnState: codexTurnState,
+                        codexTurnScope: codexTurnState == nil ? nil : codexTurnScope
                     )
                 )
                 session.finishTasksAndInvalidate()
