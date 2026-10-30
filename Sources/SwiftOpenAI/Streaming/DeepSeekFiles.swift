@@ -67,7 +67,7 @@ nonisolated public func uploadOpenAIFile(
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
-    request.timeoutInterval = 600
+    request.timeoutInterval = openAIURLSessionTimeout
     request.httpBody = body
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
     request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
@@ -76,7 +76,7 @@ nonisolated public func uploadOpenAIFile(
         request.setValue(value, forHTTPHeaderField: key)
     }
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await openAIURLSession.data(for: request)
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(status) else {
         let text = String(data: data, encoding: .utf8) ?? ""
@@ -108,14 +108,14 @@ nonisolated public func deleteOpenAIFile(
 
     var request = URLRequest(url: url)
     request.httpMethod = "DELETE"
-    request.timeoutInterval = 60
+    request.timeoutInterval = openAIURLSessionTimeout
     request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
     request.setValue(OpenAIConfiguration.defaultUserAgent, forHTTPHeaderField: "User-Agent")
     for (key, value) in extraHeaders ?? [:] {
         request.setValue(value, forHTTPHeaderField: key)
     }
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await openAIURLSession.data(for: request)
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(status) else {
         let text = String(data: data, encoding: .utf8) ?? ""

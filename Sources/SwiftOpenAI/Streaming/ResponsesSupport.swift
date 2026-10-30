@@ -8,13 +8,6 @@ import NIOCore
 import NIOHTTP1
 #endif
 
-#if !os(Windows)
-
-private let responsesRequestTimeout: TimeAmount = .seconds(300)
-private let responsesBodyLimit = 64 * 1024 * 1024
-
-#endif
-
 nonisolated func sendResponsesMessage(
     modelInfo: AIModelInfoValue.ResponsesInfo,
     messages: [ChatQuery.ChatCompletionMessageParam],
@@ -109,7 +102,7 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
 ) async throws -> OpenAIChatResult {
     let request = try makeHTTPClientRequest(from: preparedRequest.urlRequest)
     let actorHelper = OpenAISendMessageValueHelper()
-    let response = try await HTTPClient.shared.execute(request, timeout: responsesRequestTimeout)
+    let response = try await openAIHTTPClient.execute(request, deadline: .distantFuture)
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await responsesBodyString(from: response.body)
@@ -134,6 +127,9 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
             state: &state,
             metadata: &metadata
         )
+        if state.isComplete {
+            break
+        }
 
         let currentTime = Date().timeIntervalSince1970
         if currentTime - lastSendTime >= 0.5, await actorHelper.hasPendingDelta() {
@@ -202,7 +198,7 @@ private nonisolated func responsesCollectBodyData(
     from body: HTTPClientResponse.Body?
 ) async throws -> Data {
     guard let body else { return Data() }
-    let buffer = try await body.collect(upTo: responsesBodyLimit)
+    let buffer = try await body.collect(upTo: openAIResponseBodyLimit)
     guard let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) else {
         return Data()
     }

@@ -108,12 +108,9 @@ nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfig
 }
 
 #if !os(Windows)
-private let openAIRequestTimeout: TimeAmount = .seconds(300)
-private let openAIResponseBodyLimit = 64 * 1024 * 1024
-
 nonisolated private func executePreparedRequest(_ preparedRequest: PreparedChatRequest) async throws -> HTTPClientResponse {
     let request = try makeHTTPClientRequest(from: preparedRequest.urlRequest)
-    return try await HTTPClient.shared.execute(request, timeout: openAIRequestTimeout)
+    return try await openAIHTTPClient.execute(request, deadline: .distantFuture)
 }
 
 nonisolated private func makeHTTPClientRequest(from urlRequest: URLRequest) throws -> HTTPClientRequest {
@@ -259,88 +256,59 @@ nonisolated func createChatStreamEnvelopeStream(
 }
 #else /* Windows */
 
-final class ChatStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    typealias Continuation = AsyncThrowingStream<ChatStreamEnvelope, Error>.Continuation
-    
-    let continuation: Continuation
-    var sseBuffer = SSEByteBuffer()
-    var errorBody = Data()
-    var statusCode: Int = 0
-    var metadata: ChatResponseMetadata
-    var family: ProviderFamily
-    var streamState = ProviderStreamNormalizationState()
-    var receivedResponse = false
-    
-    init(continuation: Continuation, metadata: ChatResponseMetadata, family: ProviderFamily) {
+enum URLSessionStreamEvent: Sendable {
+    case response(HTTPURLResponse)
+    case data(Data)
+}
+
+/// URLSession 回调只转发原始事件，由单个异步消费者顺序解析。
+private final class URLSessionStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let continuation: AsyncThrowingStream<URLSessionStreamEvent, Error>.Continuation
+
+    init(continuation: AsyncThrowingStream<URLSessionStreamEvent, Error>.Continuation) {
         self.continuation = continuation
-        self.metadata = metadata
-        self.family = family
     }
-    
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        if let httpResponse = response as? HTTPURLResponse {
-            receivedResponse = true
-            statusCode = httpResponse.statusCode
-            metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: httpResponse))
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let response = response as? HTTPURLResponse else {
+            continuation.finish(throwing: OpenAIError.invalidResponse("Invalid URLResponse type", code: 0))
+            completionHandler(.cancel)
+            return
         }
+        continuation.yield(.response(response))
         completionHandler(.allow)
     }
-    
+
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard receivedResponse else { return }
-        if !(200...299).contains(statusCode) {
-            errorBody.append(data)
-            return
-        }
-        
-        do {
-            let finished = try processSSEBytes(
-                data,
-                buffer: &sseBuffer,
-                statusCode: statusCode,
-                metadata: metadata,
-                family: family,
-                state: &streamState,
-                continuation: continuation
-            )
-            if finished {
-                dataTask.cancel()
-            }
-        } catch {
-            dataTask.cancel()
-            session.invalidateAndCancel()
-            continuation.finish(throwing: error)
-        }
+        continuation.yield(.data(data))
     }
-    
+
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
+        if let error {
             continuation.finish(throwing: error)
-            return
-        }
-        
-        if !(200...299).contains(statusCode) {
-            let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
-            continuation.finish(throwing: mapDeepSeekBodyLimitError(message: responseBody, code: statusCode))
-            return
-        }
-        
-        do {
-            let _ = try processSSEBytes(
-                Data(),
-                buffer: &sseBuffer,
-                statusCode: statusCode,
-                metadata: metadata,
-                family: family,
-                state: &streamState,
-                continuation: continuation,
-                finalize: true
-            )
+        } else {
             continuation.finish()
-        } catch {
-            continuation.finish(throwing: error)
         }
     }
+}
+
+/// 三种流式协议共用同一传输生命周期，终止消费时同步取消底层请求。
+nonisolated func makeURLSessionStream(
+    for request: URLRequest
+) -> (session: URLSession, stream: AsyncThrowingStream<URLSessionStreamEvent, Error>) {
+    let (stream, continuation) = AsyncThrowingStream<URLSessionStreamEvent, Error>.makeStream()
+    let delegate = URLSessionStreamDelegate(continuation: continuation)
+    let session = URLSession(configuration: openAIURLSessionConfiguration, delegate: delegate, delegateQueue: nil)
+    continuation.onTermination = { _ in
+        session.invalidateAndCancel()
+    }
+    session.dataTask(with: request).resume()
+    return (session, stream)
 }
 
 nonisolated func createChatCompletionEnvelope(
@@ -348,34 +316,23 @@ nonisolated func createChatCompletionEnvelope(
     configuration: OpenAIConfiguration
 ) async throws -> ChatCompletionEnvelope {
     let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-    
-    return try await withCheckedThrowingContinuation { continuation in
-        let task = URLSession.shared.dataTask(with: preparedRequest.urlRequest) { data, response, error in
-            if let error = error {
-                continuation.resume(throwing: error)
-                return
-            }
-            guard let data = data, let httpResponse = response as? HTTPURLResponse else {
-                continuation.resume(throwing: OpenAIError.invalidResponse("Invalid URLResponse type", code: 0))
-                return
-            }
-            guard (200...299).contains(httpResponse.statusCode) else {
-                let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
-                continuation.resume(throwing: mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode))
-                return
-            }
+    let (data, response) = try await openAIURLSession.data(for: preparedRequest.urlRequest)
+    guard let httpResponse = response as? HTTPURLResponse else {
+        throw OpenAIError.invalidResponse("Invalid URLResponse type", code: 0)
+    }
+    guard (200...299).contains(httpResponse.statusCode) else {
+        let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
+        throw mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode)
+    }
 
-            do {
-                let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
-                let metadata = preparedRequest.metadata.withRequestID(
-                    ProviderResponseNormalizer.requestID(from: httpResponse)
-                )
-                continuation.resume(returning: ChatCompletionEnvelope(result: result, metadata: metadata))
-            } catch {
-                continuation.resume(throwing: OpenAIError.decodingError(error))
-            }
-        }
-        task.resume()
+    do {
+        let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
+        let metadata = preparedRequest.metadata.withRequestID(
+            ProviderResponseNormalizer.requestID(from: httpResponse)
+        )
+        return ChatCompletionEnvelope(result: result, metadata: metadata)
+    } catch {
+        throw OpenAIError.decodingError(error)
     }
 }
 
@@ -384,25 +341,70 @@ nonisolated func createChatStreamEnvelopeStream(
     configuration: OpenAIConfiguration
 ) -> AsyncThrowingStream<ChatStreamEnvelope, Error> {
     AsyncThrowingStream { continuation in
-        let localTask = Task {
+        let task = Task { [configuration] in
             do {
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-                
-                let delegate = ChatStreamDelegate(
-                    continuation: continuation,
-                    metadata: preparedRequest.metadata,
-                    family: preparedRequest.family
-                )
-                let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-                let dataTask = session.dataTask(with: preparedRequest.urlRequest)
-                dataTask.resume()
-                
+                try Task.checkCancellation()
+                let (session, stream) = makeURLSessionStream(for: preparedRequest.urlRequest)
+                defer { session.invalidateAndCancel() }
+
+                try await withTaskCancellationHandler {
+                    var streamState = ProviderStreamNormalizationState()
+                    var sseBuffer = SSEByteBuffer()
+                    var errorBody = Data()
+                    var statusCode = 0
+                    var metadata = preparedRequest.metadata
+
+                    for try await event in stream {
+                        try Task.checkCancellation()
+                        switch event {
+                        case .response(let response):
+                            statusCode = response.statusCode
+                            metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: response))
+                        case .data(let data):
+                            if !(200...299).contains(statusCode) {
+                                errorBody.append(data)
+                                continue
+                            }
+                            if try processSSEBytes(
+                                data,
+                                buffer: &sseBuffer,
+                                statusCode: statusCode,
+                                metadata: metadata,
+                                family: preparedRequest.family,
+                                state: &streamState,
+                                continuation: continuation
+                            ) {
+                                return
+                            }
+                        }
+                    }
+
+                    try Task.checkCancellation()
+                    guard (200...299).contains(statusCode) else {
+                        let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
+                        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                    }
+                    try processSSEBytes(
+                        Data(),
+                        buffer: &sseBuffer,
+                        statusCode: statusCode,
+                        metadata: metadata,
+                        family: preparedRequest.family,
+                        state: &streamState,
+                        continuation: continuation,
+                        finalize: true
+                    )
+                } onCancel: {
+                    session.invalidateAndCancel()
+                }
+                continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
             }
         }
         continuation.onTermination = { _ in
-            localTask.cancel()
+            task.cancel()
         }
     }
 }

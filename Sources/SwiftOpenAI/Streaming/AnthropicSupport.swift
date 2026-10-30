@@ -8,13 +8,6 @@ import NIOCore
 import NIOHTTP1
 #endif
 
-#if !os(Windows)
-
-private let anthropicRequestTimeout: TimeAmount = .seconds(300)
-private let anthropicBodyLimit = 64 * 1024 * 1024
-
-#endif
-
 nonisolated func sendAnthropicMessage(
     modelInfo: AIModelInfoValue.AnthropicInfo,
     messages: [ChatQuery.ChatCompletionMessageParam],
@@ -102,7 +95,7 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
 ) async throws -> OpenAIChatResult {
     let request = try makeAnthropicHTTPClientRequest(from: preparedRequest.urlRequest)
     let actorHelper = OpenAISendMessageValueHelper()
-    let response = try await HTTPClient.shared.execute(request, timeout: anthropicRequestTimeout)
+    let response = try await openAIHTTPClient.execute(request, deadline: .distantFuture)
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await anthropicBodyString(from: response.body)
@@ -126,6 +119,9 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
             state: &state,
             metadata: &metadata
         )
+        if state.isComplete {
+            break
+        }
 
         let currentTime = Date().timeIntervalSince1970
         if currentTime - lastSendTime >= 0.5, await actorHelper.hasPendingDelta() {
@@ -191,7 +187,7 @@ private nonisolated func anthropicCollectBodyData(
     from body: HTTPClientResponse.Body?
 ) async throws -> Data {
     guard let body else { return Data() }
-    let buffer = try await body.collect(upTo: anthropicBodyLimit)
+    let buffer = try await body.collect(upTo: openAIResponseBodyLimit)
     guard let bytes = buffer.getBytes(at: buffer.readerIndex, length: buffer.readableBytes) else {
         return Data()
     }

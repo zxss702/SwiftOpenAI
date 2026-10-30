@@ -69,7 +69,7 @@ nonisolated func makeAnthropicURLRequest(
     )
 
     var request = URLRequest(url: url)
-    request.timeoutInterval = 300
+    request.timeoutInterval = openAIURLSessionTimeout
     request.httpMethod = "POST"
     let httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     try assertRequestBodyWithinDeepSeekLimitIfNeeded(

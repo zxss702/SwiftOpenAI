@@ -268,6 +268,7 @@ enum ProviderRequestEncoder {
         let requestURL = try APIBaseURL.appendChatCompletions(to: configuration.baseURL)
 
         var request = URLRequest(url: requestURL)
+        request.timeoutInterval = openAIURLSessionTimeout
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.token)", forHTTPHeaderField: "Authorization")
