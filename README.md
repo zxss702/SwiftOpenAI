@@ -1,667 +1,338 @@
 # SwiftOpenAI
 
-🚀 **现代化的 Swift OpenAI SDK** - 使用纯 Swift Foundation 实现，支持流式传输、工具调用、Swift 宏、多模态等高级功能。
+An AI conversation library for Swift apps, with a unified interface for streaming responses, tool calling, and multimodal messages. Supports four protocols: Chat Completions, Responses, ChatGPT Codex, and Anthropic Messages.
 
-[![Swift](https://img.shields.io/badge/swift-5.9+-brightgreen.svg)](https://swift.org)
-[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)](https://github.com/apple/swift)
+- [Installation](#installation)
+- [Sending Messages](#sending-messages)
+- [Supported Protocols](#supported-protocols)
+- [Tool Calling](#tool-calling)
+- [Platform Differences](#platform-differences)
+- [Protocol Compatibility](#protocol-compatibility)
 
-## ✨ 特性
+## Installation
 
-### 🎯 核心功能
-- ✅ **流式传输** - 实时获取 AI 响应，支持思考过程（reasoning）
-- ✅ **工具调用** - 完整支持 Function Calling 和并行工具调用
-- ✅ **多模态** - 支持文本、图像混合输入
-- ✅ **Swift 宏** - 使用 `@SYTool`、`@SYToolArgs`、`@AIModelSchema` 自动生成代码
-  - 🆕 **简洁参数定义** - 使用 `= TypeName.self` 语法，简洁优雅
-  - ✨ **简化工具调用** - 直接传入工具对象，无需 `.asChatCompletionTool` 转换
-- ✅ **类型安全** - 完整的 Swift 类型系统支持
-- ✅ **async/await** - 现代异步编程
-
-### 🔧 高级特性
-- ✅ **Extra Body** - 双层支持（配置级别 + 请求级别）
-- ✅ **API 兼容性** - 智能支持 `reasoning` 和 `reasoning_content` 字段
-- ✅ **自定义端点** - 支持任意 OpenAI 兼容 API（如 SiliconFlow）
-- ✅ **便捷 API** - 一行代码创建消息和对话
-- ✅ **错误处理** - 完整的错误类型和本地化
-- ✅ **Swift 6 兼容** - 完全支持 Swift 6 的 Main actor 隔离规则
-- ✅ **四条传输线路** - `completions`（Chat Completions）、`responses`（通用 `/responses`）、`codex`（ChatGPT Codex）、`anthropic`（Anthropic Messages `/messages`）
-
-## 📦 安装
-
-### Swift Package Manager
-
-在 `Package.swift` 中添加依赖：
+Use a Swift 6 toolchain and add the dependency through Swift Package Manager. This example targets the repository's current `main` branch:
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/zxss702/SwiftOpenAI.git", from: "1.0.0")
-]
+// In Package.swift dependencies
+.package(url: "https://github.com/zxss702/SwiftOpenAI.git", branch: "main")
+
+// In the consuming target's dependencies
+.product(name: "SwiftOpenAI", package: "SwiftOpenAI")
 ```
 
-或在 Xcode 中：`File > Add Package Dependencies...`
+You can also add the repository URL in Xcode under `File > Add Package Dependencies…` and select the `main` branch.
 
-## 🚀 快速开始
+## Sending Messages
 
-### 基础聊天
+The request examples below run in an `async throws` context. For UI events, start the request in a `Task` and handle errors at the call site.
+
+### Streaming Responses
 
 ```swift
 import SwiftOpenAI
 
-// 配置 API
-let modelInfo = AIModelInfoValue(
-    token: "your-openai-api-key",
-    modelID: "gpt-4"
+let modelInfo = AIModelInfoValue.completions(
+    .init(
+        token: "YOUR_API_KEY",
+        baseURL: "https://api.openai.com/v1",
+        modelID: "gpt-4.1"
+    )
 )
-
-// 超简洁的消息创建 ✨
-let messages: [OpenAIMessage] = [
-    .system("你是一个有用的 AI 助手"),
-    .user("你好！请介绍一下你自己")
-]
-
-// 流式传输
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    temperature: 0.7,
-    stream: true
-) { streamResult in
-    print("💭 AI 思考: \(streamResult.subThinkingText)")
-    print("💬 AI 回复: \(streamResult.subText)")
-    print("📝 完整内容: \(streamResult.fullText)")
-}
-
-print("✅ 对话完成: \(result.fullText)")
-```
-
-### 选择传输线路
-
-`sendMessage` 通过 `AIModelInfoValue` 选择线路，消息与工具类型保持不变：
-
-```swift
-// Chat Completions：POST …/chat/completions
-let completions = AIModelInfoValue.completions(
-    .init(token: "sk-...", baseURL: "https://api.openai.com/v1", modelID: "gpt-4")
-)
-
-// 通用 Responses：POST …/responses（Bearer API key，可配任意 baseURL）
-let responses = AIModelInfoValue.responses(
-    .init(token: "sk-...", baseURL: "https://api.deepseek.com", modelID: "gpt-5")
-)
-
-// Codex：ChatGPT backend，复用 Responses 编解码与 SSE
-let codex = AIModelInfoValue.codex(
-    .init(accessToken: "...", accountID: "...")
-)
-
-// Anthropic Messages：POST …/v1/messages（仍传 OpenAI 形状的 messages/tools）
-let anthropic = AIModelInfoValue.anthropic(
-    .init(token: "…", baseURL: "https://api.deepseek.com/anthropic", modelID: "claude-sonnet-4-5")
-)
-```
-
-`responses` 与 `codex` 共用 Responses 协议内核。历史消息（含 system / reminder）按原顺序编进 `input`，不使用 `instructions`；`codex` 会将 system / reminder 编码为 `developer` 消息，并省略 `temperature`、`top_p`、`max_output_tokens`（包括 `extraBody` 中的同名字段）。`anthropic` 在 Encoding 层把 Chat Completions 消息映射到 Anthropic `/v1/messages`。端点统一用完整 `baseURL`（如 `https://api.deepseek.com`、`http://localhost:8080`），库再按线路追加资源路径。
-
-继续 Responses/Codex 对话时，将 `result.contentBlocks` 传给下一条历史 `.assistant(..., contentBlocks: result.contentBlocks)`。正文、思考文本和工具调用始终来自 assistant 的 `content`、`reasoningContent`、`toolCalls`；`contentBlocks.responses` 只保存隐藏字段、文本范围和工具索引，用于还原加密 reasoning、assistant `phase` 和输出顺序。编辑这些 C 字段后，旧隐藏上下文自动失效，按当前 C 字段重新编码。旧版原始 output blocks 会在解码时转换为补充上下文。OpenAI Responses/Codex 默认请求 `reasoning.encrypted_content`，`extraBody` 仍可覆盖 `include`。
-
-Codex 还会通过 `session-id` 请求头维持 ChatGPT 后端的缓存亲和性：首次请求生成标识，通过 `result.contentBlocks.codexSessionID` 持久化，后续请求复用历史中最近的标识。调用方可通过 `extraHeaders["session-id"]` 显式指定；此标识不写入正文，也不影响普通 Responses 线路。
-
-同一用户轮次内的工具续调还会回传服务端返回的 `x-codex-turn-state`，由 `contentBlocks.codexTurnState` 携带；遇到新 user 消息、无工具调用的 assistant 答复、账户/模型/会话变更或对应 C 内容编辑时不复用旧令牌。
-
-### 一行创建对话 🎉
-
-```swift
-// 超级简洁！
-let messages = Array<OpenAIMessage>.conversation(
-    system: "你是编程助手",
-    userMessages: "什么是 Swift？", "如何学习 Swift？"
-)
-```
-
-## 🛠 工具调用（Function Calling）
-
-### 参数定义语法
-
-使用 `@SYTool` 宏定义工具参数的推荐语法：
-
-```swift
-@SYTool
-struct MyTool {
-    let name = "my_tool"
-    let description = "工具描述"
-    
-    // 使用 .self 语法定义参数类型（推荐）
-    let parameters = MyArgs.self
-}
-```
-
-#### 具体示例
-
-```swift
-// 中文工具定义示例
-@SYTool
-struct forewordTool {
-    let name: String = "前言"
-    let description: String = "向用户说明你下一步的计划。不应该超过两句话。"
-    let parameters = 前言.self  // 🎯 支持中文类型名！
-}
-
-@SYToolArgs
-struct 前言 {
-    /// 你想说的话。
-    let 内容: String
-}
-```
-
-### 定义工具
-
-使用 Swift 宏轻松定义工具：
-
-```swift
-// 1. 定义参数结构
-@SYToolArgs
-struct WeatherArgs {
-    /// 城市名称
-    let location: String
-    /// 温度单位，可选
-    let unit: String?
-    /// 是否包含预报
-    let includeForecast: Bool
-}
-
-// 2. 定义工具 - 使用 .self 语法
-@SYTool
-struct WeatherTool {
-    let name = "get_weather"
-    let description = "获取指定城市的天气信息"
-    let parameters = WeatherArgs.self
-}
-
-// 3. 使用工具 - ✨ 简化语法
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: [.user("北京今天天气如何？")],
-    tools: [WeatherTool()],  // 🎯 直接传入工具对象，无需 .asChatCompletionTool
-    temperature: 0.7
-) { streamResult in
-    print(streamResult.subText, terminator: "")
-    
-    // 显示工具调用
-    for toolCall in streamResult.allToolCalls {
-        print("🔧 使用工具: \(toolCall.function?.name ?? "")")
-    }
-}
-
-// 4. 定义返回数据结构（自动生成 JSON Schema）
-/// 天气信息响应
-@AIModelSchema
-struct WeatherResponse {
-    /// 当前温度
-    let temperature: Double
-    /// 天气状况
-    let condition: String
-    /// 湿度百分比
-    let humidity: Int
-    /// 未来几天预报
-    let forecast: [DailyForecast]?
-}
-```
-
-### 使用工具
-
-```swift
-let weatherTool = WeatherTool()
-let tools = [weatherTool.asChatCompletionTool]
 
 let messages: [OpenAIMessage] = [
-    .system("你是天气助手，可以查询天气信息"),
-    .user("北京今天天气怎么样？")
-]
-
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    tools: tools,
-    parallelToolCalls: true  // 支持并行调用
-) { streamResult in
-    // 处理工具调用
-    for toolCall in streamResult.allToolCalls {
-        print("🔧 调用工具: \(toolCall.function?.name ?? "")")
-        print("📋 参数: \(toolCall.function?.arguments ?? "")")
-    }
-    print("💬 回复: \(streamResult.subText)")
-}
-```
-
-## 🖼 多模态支持
-
-### 图像分析
-
-```swift
-// 读取图像数据
-let imageData = // ... 你的图像数据
-
-// 创建带图片的消息 - 超简洁！
-let messages: [OpenAIMessage] = [
-    .system("你是专业的图像分析师"),
-    .user("请分析这张图片的内容", imageDatas: imageData, detail: .high)
+    .system("You are a concise assistant."),
+    .user("Introduce Swift in one sentence.")
 ]
 
 let result = try await sendMessage(
     modelInfo: modelInfo,
     messages: messages
-) { stream in
-    print("🖼️ 图像分析: \(stream.subText)")
-}
-```
-
-### 多图片处理
-
-```swift
-// 支持多张图片
-let messages: [OpenAIMessage] = [
-    .system("比较这些图片的差异"),
-    .user("请比较这两张图片", imageDatas: imageData1, imageData2)
-]
-```
-
-## 🔧 高级配置
-
-### 自定义 API 端点
-
-```swift
-// 使用 SiliconFlow 或其他兼容 API
-let modelInfo = AIModelInfoValue(
-    token: "your-api-key",
-    baseURL: "https://api.siliconflow.cn/v1",
-    modelID: "Qwen/Qwen2.5-7B-Instruct"
-)
-```
-
-### Extra Body 参数
-
-```swift
-// 配置级别的额外参数
-let config = OpenAIConfiguration(
-    token: "your-token",
-    extraBody: [
-        "provider": "custom",
-        "timeout": 30
-    ]
-)
-
-// 请求级别的额外参数（会覆盖配置级别）
-let query = ChatQuery(
-    messages: messages,
-    model: "gpt-4",
-    extraBody: [
-        "custom_param": .string("value"),
-        "max_retries": .int(3),
-        "enable_cache": .bool(true),
-        "metadata": .object([
-            "user_id": .string("123"),
-            "session_id": .string("abc")
-        ])
-    ]
-)
-```
-
-## ✨ 简化工具语法
-
-SwiftOpenAI v2.0 引入了简化的工具调用语法，让工具使用更加直观和便捷。
-
-### 🎯 新语法 vs 旧语法
-
-**🆕 新的简化语法（推荐）**：
-```swift
-// 直接传入工具对象，自动转换
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    tools: [WeatherTool(), CalculatorTool()],  // 🎯 简洁优雅
-    temperature: 0.7
-) { streamResult in
-    print(streamResult.subText, terminator: "")
-}
-```
-
-**🔧 传统语法（仍然支持）**：
-```swift
-// 需要手动转换工具对象
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    tools: [WeatherTool().asChatCompletionTool, CalculatorTool().asChatCompletionTool],  // 🔄 需要转换
-    temperature: 0.7
-) { streamResult in
-    print(streamResult.subText, terminator: "")
-}
-```
-
-### 📊 语法对比
-
-| 特性 | 新语法 | 传统语法 |
-|------|-------|----------|
-| **简洁性** | ✅ 更简洁 | ❌ 较繁琐 |
-| **类型安全** | ✅ 完全类型安全 | ✅ 完全类型安全 |
-| **自动转换** | ✅ 自动处理 | ❌ 手动转换 |
-| **代码可读性** | ✅ 更清晰 | ❌ 较冗长 |
-| **兼容性** | ✅ 向下兼容 | ✅ 继续支持 |
-
-### 🚀 实际使用示例
-
-```swift
-import SwiftOpenAI
-
-// 定义多个工具
-@SYTool
-struct WeatherTool {
-    let name = "get_weather"
-    let description = "获取天气信息"
-    let parameters = WeatherArgs.self
+) { update in
+    print(update.subText, terminator: "")
 }
 
-@SYTool  
-struct CalculatorTool {
-    let name = "calculator"
-    let description = "执行数学计算"
-    let parameters = CalculatorArgs.self
-}
-
-// 🎯 使用简化语法 - 一次性传入多个工具
-let result = try await sendMessage(
-    modelInfo: AIModelInfoValue(
-        token: "your-api-token",
-        baseURL: "https://api.openai.com/v1",
-        modelID: "gpt-4-turbo"
-    ),
-    messages: [.user("北京天气怎么样？然后帮我计算 15 + 27")],
-    tools: [WeatherTool(), CalculatorTool()],  // ✨ 直接传入多个工具
-    temperature: 0.8
-) { streamResult in
-    print("💬 AI回复: \(streamResult.subText, terminator: "")")
-    
-    // 实时显示工具调用
-    for toolCall in streamResult.allToolCalls {
-        print("\n🔧 调用工具: \(toolCall.function?.name ?? "未知")")
-        print("📋 参数: \(toolCall.function?.arguments ?? "无")")
-    }
-}
-
-print("✅ 最终回复: \(result.fullText)")
+// The complete response after the request finishes
+let answer = result.fullText
 ```
 
-## 📋 便捷的消息管理
+In the callback, `subText` contains newly received text, while `fullText` contains the accumulated text. Reasoning text is available through `subThinkingText` / `fullThinkingText` when returned by the service and model.
 
-### 数组扩展方法
+The callback is `@Sendable`. Switch to `MainActor` when updating SwiftUI / UIKit views. To stop a request, cancel the Swift `Task` that started it.
 
-```swift
-var messages: [OpenAIMessage] = []
-
-// 便捷添加方法
-messages.addSystemMessage("你是AI助手")
-messages.addUserMessage("你好")
-messages.addAssistantMessage("你好！有什么我可以帮助的吗？")
-messages.addToolMessage("工具执行结果", toolCallId: "call_123")
-```
-
-### 消息属性访问
+### Getting a Complete Response
 
 ```swift
-let message: OpenAIMessage = .user("Hello")
-
-print("内容: \(message.textContent ?? "无内容")")
-print("角色: \(message.role)")
-print("名称: \(message.name ?? "无名称")")
-
-// 检查工具调用
-if let toolCalls = message.toolCalls {
-    print("包含 \(toolCalls.count) 个工具调用")
-}
-```
-
-## 🤖 AI 思考过程
-
-通过统一的 `thinkLevel` 控制思考强度（四条线路共用；Anthropic 映射为 `thinking` / `budget_tokens`）：
-
-```swift
-public enum ThinkLevel: String, Codable {
-    case none, minimal, low, medium, high, xhigh, max
-}
-```
-
-- `nil`：不传思考参数，走厂商默认
-- `none`：关闭思考（传参请写 `ThinkLevel.none`，避免与 `Optional.none` 混淆）
-- 其余等级：开启思考，并由 Provider 映射到 `thinking` / `reasoning_effort` / `reasoning.effort` 等线格式
-
-```swift
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    thinkLevel: .high
-) { streamResult in
-    // 实时查看 AI 思考过程
-    if !streamResult.subThinkingText.isEmpty {
-        print("🧠 AI 思考: \(streamResult.subThinkingText)")
-    }
-    
-    // AI 的回复内容
-    if !streamResult.subText.isEmpty {
-        print("💬 AI 回复: \(streamResult.subText)")
-    }
-}
-```
-
-响应侧会归一化各厂商的 `reasoning` / `reasoning_content` / `reasoning_details` 到 `subThinkingText` / `fullThinkingText`。
-
-## 🔄 非流式传输
-
-```swift
-// 如果不需要实时响应，可以使用同步版本
 let result = try await sendMessageSync(
     modelInfo: modelInfo,
-    messages: messages,
-    temperature: 0.7,
-    maxCompletionTokens: 1000
+    messages: [.user("Introduce Swift in one sentence.")]
+)
+let answer = result.fullText
+```
+
+`sendMessageSync` is still an `async throws` API. Call it with `try await`; it returns only when the complete response is ready.
+
+### Continuing a Conversation
+
+The app stores conversation history and passes it with the next request. This example continues the streaming example with another round of plain text conversation:
+
+```swift
+var history = messages
+history.append(.assistant(
+    result.fullText,
+    reasoningContent: result.fullThinkingText,
+    contentBlocks: result.contentBlocks
+))
+history.append(.user("Give me a simple code example as well."))
+
+let next = try await sendMessageSync(
+    modelInfo: modelInfo,
+    messages: history
+)
+```
+
+Keep `reasoningContent` and `contentBlocks` so the library can carry the protocol context needed to continue the conversation; you do not need to parse their contents. Responses with tool calls also require preserving `toolCalls`. See [Tool Calling](#tool-calling) for the complete example.
+
+### Sending Images
+
+```swift
+import Foundation
+
+let imageData = try Data(contentsOf: URL(fileURLWithPath: "/path/to/photo.jpg"))
+let result = try await sendMessageSync(
+    modelInfo: modelInfo,
+    messages: [.user("Describe this image.", imageDatas: imageData)]
+)
+```
+
+You can also pass images through `images: [Data]`; for videos, use `videoDatas:` or `videos: [Data]`. Actual support depends on the protocol, provider, and model. See [Multimodal Handling](#multimodal-handling).
+
+## Supported Protocols
+
+Select the protocol explicitly through `AIModelInfoValue`. All protocols use the same `sendMessage` / `sendMessageSync` APIs, `OpenAIMessage`, and tool definitions.
+
+| Configuration | Protocol / Default Endpoint | Authentication |
+| --- | --- | --- |
+| `.completions` | Chat Completions: `https://api.openai.com/v1/chat/completions` | Bearer API key |
+| `.responses` | Responses: `https://api.openai.com/v1/responses` | Bearer API key |
+| `.codex` | ChatGPT Codex: `https://chatgpt.com/backend-api/codex/responses` | access token + ChatGPT account ID |
+| `.anthropic` | Anthropic Messages: `https://api.anthropic.com/v1/messages` | `x-api-key` + `anthropic-version` |
+
+```swift
+let completions = AIModelInfoValue.completions(
+    .init(token: "YOUR_API_KEY", modelID: "gpt-4.1")
 )
 
-print("最终结果: \(result.fullText)")
+let responses = AIModelInfoValue.responses(
+    .init(token: "YOUR_API_KEY", modelID: "gpt-4.1")
+)
+
+let codex = AIModelInfoValue.codex(
+    .init(accessToken: "YOUR_ACCESS_TOKEN", accountID: "YOUR_ACCOUNT_ID")
+)
+
+let anthropic = AIModelInfoValue.anthropic(
+    .init(token: "YOUR_API_KEY", modelID: "claude-sonnet-4-5")
+)
 ```
 
-## ❌ 错误处理
+Use model IDs offered by your provider. Codex uses the ChatGPT backend; the library accepts existing credentials and does not handle login or token refresh.
+
+### Custom Base URLs
+
+Each configuration accepts a `baseURL`, for example:
 
 ```swift
-do {
-    let result = try await sendMessage(/* ... */) { _ in }
-} catch OpenAIError.missingToken {
-    print("❌ 缺少 API 密钥")
-} catch OpenAIError.networkError(let error) {
-    print("❌ 网络错误: \(error)")
-} catch OpenAIError.decodingError(let error) {
-    print("❌ 解码错误: \(error)")
-} catch OpenAIError.invalidResponse {
-    print("❌ 无效响应")
-} catch {
-    print("❌ 未知错误: \(error)")
-}
+let modelInfo = AIModelInfoValue.completions(
+    .init(
+        token: "YOUR_API_KEY",
+        baseURL: "https://api.deepseek.com",
+        modelID: "deepseek-chat"
+    )
+)
 ```
 
-## 🎨 JSON Schema 自动生成
+Paths are completed according to the selected protocol:
+
+- **Completions / Responses**: A URL with no path gets `/v1/chat/completions` or `/v1/responses`. An existing path gets `/chat/completions` or `/responses` appended. A complete resource path is not appended again.
+- **Anthropic**: A URL with no path gets `/v1/messages`. A path ending in `/v1` gets only `/messages` appended. A custom prefix gets `/v1/messages` appended. A path already ending in `/messages` is kept as is.
+- **Codex**: Uses the ChatGPT backend shown in the table by default. You can specify a compatible backend with `baseURL`.
+
+**The caller must select the protocol explicitly.** Setting a provider URL or changing the model ID does not switch protocols automatically. A service that advertises OpenAI compatibility does not necessarily support Responses or Anthropic Messages.
+
+## Tool Calling
+
+Tool calling has three steps: **provide tool definitions → execute the tools requested by the model in your app → return the results and continue the request**. Neither the library nor the Swift macros execute your business logic automatically.
+
+The examples below use an addition tool. Choose either the standard approach or the macro approach; both define the same `AdditionArgs` and `tools`, followed by the shared execution flow.
+
+### Standard Approach: JSON Schema
 
 ```swift
-/// 任务定义（支持文档注释！）
-@AIModelSchema
-struct Task {
-    /// 任务名称
-    let name: String
-    /// 任务描述
-    let description: String
-    /// 优先级
-    let priority: TaskPriority
-    /// 子任务列表
-    let subtasks: [Task]?
-}
-
-/// 任务优先级
-@AIModelSchema
-enum TaskPriority: String, CaseIterable {
-    /// 高优先级
-    case high
-    /// 普通优先级
-    case normal  
-    /// 低优先级
-    case low
-}
-
-// 自动生成的 JSON Schema
-print(Task.outputSchema) // 完整的 JSON Schema 字符串
-```
-
-## 🧪 完整示例
-
-```swift
+import Foundation
 import SwiftOpenAI
 
-// 智能计算器助手
-class CalculatorAssistant {
-    
-    // 定义计算器工具
-    @SYToolArgs
-    struct CalculatorArgs {
-        let operation: String  // "add", "subtract", "multiply", "divide"
-        let a: Double
-        let b: Double
-    }
-    
-    @SYTool
-    struct CalculatorTool {
-        let name = "calculator"
-        let description = "执行基本数学运算"
-        let parameters = CalculatorArgs.self  // 使用推荐的 .self 形式
-    }
-    
-    @AIModelSchema
-    struct CalculationResult {
-        let result: Double
-        let operation: String
-        let operands: [Double]
-    }
-    
-    let modelInfo = AIModelInfoValue(
-        token: "your-openai-api-key",
-        modelID: "gpt-4"
-    )
-    
-    func solve(_ problem: String) async throws -> String {
-        let messages = Array<OpenAIMessage>.conversation(
-            system: "你是数学助手，可以使用计算器解决问题",
-            userMessages: problem
-        )
-        
-        let calculator = CalculatorTool()
-        
-        let result = try await sendMessage(
-            modelInfo: modelInfo,
-            messages: messages,
-            tools: [calculator.asChatCompletionTool],
-            temperature: 0.1
-        ) { streamResult in
-            print("🧮 计算中: \(streamResult.subText)")
-            
-            // 显示工具调用
-            for toolCall in streamResult.allToolCalls {
-                print("🔧 使用工具: \(toolCall.function?.name ?? "")")
-            }
-        }
-        
-        return result.fullText
-    }
+struct AdditionArgs: Codable, Sendable {
+    let a: Double
+    let b: Double
 }
 
-// 使用示例
-let assistant = CalculatorAssistant()
-let answer = try await assistant.solve("计算 (15.5 + 23.7) × 2 - 10.2")
-print("📊 结果: \(answer)")
+let additionTool = ChatQuery.ChatCompletionToolParam(
+    type: "function",
+    function: .init(
+        name: "add_numbers",
+        description: "Calculate the sum of two numbers.",
+        strict: true,
+        parameters: [
+            "type": .string("object"),
+            "properties": .object([
+                "a": .object(["type": .string("number")]),
+                "b": .object(["type": .string("number")])
+            ]),
+            "required": .array([.string("a"), .string("b")]),
+            "additionalProperties": .bool(false)
+        ]
+    )
+)
+
+let tools: [any OpenAIToolConvertible] = [additionTool]
 ```
 
-## 🌐 API 兼容性
-
-SwiftOpenAI 与以下服务兼容：
-
-- ✅ **OpenAI** - 原生支持
-- ✅ **SiliconFlow** - 已测试通过
-- ✅ **Azure OpenAI** - 支持
-- ✅ **其他 OpenAI 兼容 API** - 通用支持
-
-## 📊 性能
-
-基于真实测试数据：
-- 📡 **大量消息处理**: 51条消息，编码耗时 < 0.001秒
-- 🔧 **工具参数生成**: JSON Schema 自动生成
-- 🖼️ **多模态支持**: 图像+文本消息正常处理
-- ⚡ **流式传输**: 实时响应，低延迟
-
-## 🔍 系统要求
-
-- macOS 14.0+
-- Swift 5.9+
-- Xcode 15.0+
-
-## 🛡️ Swift 6 兼容性
-
-SwiftOpenAI 完全兼容 Swift 6 的 Main actor 隔离规则。在 Swift 6 中，所有工具结构体都自动标记为 `nonisolated`，确保可以在非隔离上下文中使用。
-
-### 问题解决
-
-**问题**: 在 Swift 6 中，使用 `@SYTool` 宏定义的工具结构体会产生以下错误：
-```
-Main actor-isolated conformance of 'ForewordTool' to 'OpenAIToolConvertible' cannot be used in caller isolation inheriting-isolated context; this is an error in the Swift 6 language mode
-```
-
-**解决方案**: SwiftOpenAI 现在自动生成 `nonisolated` 扩展，确保工具可以在任何上下文中使用：
+### Swift Macro Approach: Generate Definitions from Types
 
 ```swift
-// ✅ 现在可以正常工作，不会产生 Main actor 隔离错误
-@SYTool
-struct forewordTool {
-    let name: String = "前言"
-    let description: String = "向用户说明你下一步的计划。不应该超过两句话。"
-    let parameters = 前言.self
+import Foundation
+import SwiftOpenAI
+
+@SYToolArgs
+struct AdditionArgs: Codable, Sendable {
+    /// The first number to add.
+    let a: Double
+    /// The second number to add.
+    let b: Double
 }
 
-// ✅ 可以在非隔离上下文中使用
-let tools: [any OpenAIToolConvertible] = [forewordTool()]
-let result = try await sendMessage(
-    modelInfo: modelInfo,
-    messages: messages,
-    tools: tools,  // 不会产生 Main actor 隔离错误
-    temperature: 0.7
-) { streamResult in
-    print("💬 AI回复: \(streamResult.subText)")
+@SYTool
+struct AdditionTool {
+    let name = "add_numbers"
+    let description = "Calculate the sum of two numbers."
+    let parameters = AdditionArgs.self
+}
+
+let tools: [any OpenAIToolConvertible] = [AdditionTool()]
+```
+
+- `@SYToolArgs` generates a JSON Schema from parameter types and documentation comments.
+- `@SYTool` generates a tool definition from `name`, `description`, and `parameters = ArgumentType.self`, with `strict` enabled by default.
+- Both approaches pass tools through `OpenAIToolConvertible` and can be mixed. Macros only generate definitions; the app still decodes arguments and executes the tools.
+
+### Executing Tools and Returning Results
+
+Place this after either tool definition approach and reuse the earlier `modelInfo`. This example waits for each request to finish before executing tools, so streamed arguments are complete before use.
+
+```swift
+enum ToolCallError: Error {
+    case incompleteCall
+    case unknownTool(String)
+}
+
+var history: [OpenAIMessage] = [
+    .user("Use the addition tool to calculate 12.5 + 7.5.")
+]
+
+while true {
+    let result = try await sendMessageSync(
+        modelInfo: modelInfo,
+        messages: history,
+        tools: tools
+    )
+
+    // Convert complete tool calls to the history message type without dropping any calls.
+    let toolCalls: [AssistantMessageParam.ToolCallParam] = try result.allToolCalls.map { call in
+        guard let id = call.id,
+              let function = call.function,
+              let name = function.name,
+              let arguments = function.arguments else {
+            throw ToolCallError.incompleteCall
+        }
+        return .init(id: id, function: .init(name: name, arguments: arguments))
+    }
+
+    history.append(.assistant(
+        result.fullText,
+        toolCalls: toolCalls,
+        reasoningContent: result.fullThinkingText,
+        contentBlocks: result.contentBlocks
+    ))
+
+    if toolCalls.isEmpty {
+        print(result.fullText)
+        break
+    }
+
+    for call in toolCalls {
+        switch call.function.name {
+        case "add_numbers":
+            let args = try JSONDecoder().decode(
+                AdditionArgs.self,
+                from: Data(call.function.arguments.utf8)
+            )
+            let output = String(args.a + args.b)
+            history.append(.tool(output, toolCallId: call.id))
+        default:
+            throw ToolCallError.unknownTool(call.function.name)
+        }
+    }
 }
 ```
 
-### 技术细节
+For each tool-calling round, first save the complete assistant message, then append a `.tool` result with the matching `toolCallId` for every call, and send another request with the same tool definitions. The model may request multiple rounds of tool calls. Returning only tool results or preserving only `fullText` is not sufficient.
 
-- 所有 `@SYTool` 宏生成的扩展都标记为 `nonisolated`
-- 所有 `@SYToolArgs` 宏生成的扩展都标记为 `nonisolated`
-- 工具结构体可以在任何上下文中安全使用
-- 完全向后兼容，不影响现有代码
+Set `toolChoice` to `.auto`, `.required`, or `.function("add_numbers")`. To disable tools, use `ChatQuery.ChatCompletionFunctionCallOptionParam.none`. Setting `parallelToolCalls: true` allows the model to request multiple tools at once; the app controls their execution order and concurrency.
 
-## 🤝 贡献
+## Platform Differences
 
-欢迎贡献代码！请查看 [贡献指南](CONTRIBUTING.md)。
+Minimum Apple platform versions: macOS 14, iOS 17, Mac Catalyst 17, and visionOS 1.
 
-## 📄 许可证
+| Platform | Conversation Requests and Streaming |
+| --- | --- |
+| Apple platforms, Linux, and other non-Windows platforms | Use AsyncHTTPClient / SwiftNIO to receive streaming responses. |
+| Windows | Uses a URLSession delegate to receive data incrementally, with true streaming callbacks. |
+| Files uploads / deletions on all platforms | Use URLSession. |
 
-MIT License - 查看 [LICENSE](LICENSE) 文件了解详情。
+The public API is the same across platforms, so there is no need to switch conversation APIs. Linux / Windows builds also depend on platform support in the Swift toolchain and dependencies you use.
 
-## 🆘 支持
+## Protocol Compatibility
 
-- 📖 [文档](https://github.com/your-repo/SwiftOpenAI/wiki)
-- 🐛 [问题反馈](https://github.com/your-repo/SwiftOpenAI/issues)
-- 💬 [讨论区](https://github.com/your-repo/SwiftOpenAI/discussions)
+### Completions Provider Adaptations
 
----
+The Completions path identifies OpenAI, Moonshot / Kimi, MiniMax, Zhipu, Volcengine Ark, Alibaba Cloud DashScope, DeepSeek, and TokenDance by the `baseURL` domain and handles common differences between these services:
 
-⭐ **如果这个项目对你有帮助，请给个星标支持！**
+- Maps the unified `thinkLevel` to provider-supported reasoning parameters and reads reasoning output from fields such as `reasoning` / `reasoning_content`.
+- Adjusts the role of `reminder` messages and accommodates differences in usage reporting and streamed tool arguments. MiniMax's cumulative streaming output is converted to deltas.
+- Downgrades `responseFormat` according to provider capabilities: from `json_schema` to `json_object`, or removes it when unsupported.
+- Removes `strict` for services that do not support strict tool schemas. For DeepSeek, it is kept only when a `/beta` URL is explicitly configured; the library does not switch to the beta endpoint automatically.
+
+Unknown domains and proxy URLs use generic compatibility rules. The library does not infer the underlying provider from the model ID. These adaptations do not guarantee identical capabilities across all OpenAI-compatible services.
+
+### Parameter Handling Across Protocols
+
+| Protocol | Behavior Callers Should Be Aware Of |
+| --- | --- |
+| Responses / Codex | Do not support `prediction`, `user`, or `n != 1`; passing them results in an unsupported-parameter-combination error. |
+| Codex | Automatically removes the request fields corresponding to `temperature`, `topP`, and `maxCompletionTokens`. |
+| Anthropic | Does not support `prediction`, `user`, `n != 1`, frequency / presence penalties, or `responseFormat`. When reasoning is enabled, required tool use or a specific function choice is changed to `auto`. |
+
+Use the unified `thinkLevel` parameter to choose reasoning intensity, such as `.high`. To disable reasoning, pass `ThinkLevel.none` explicitly; Swift interprets `.none` alone as the optional value `nil`. Supported levels depend on the service and model.
+
+Add provider-specific request parameters through `extraBody` and custom request headers through `extraHeaders`. The Codex field-removal rules above also apply to `extraBody`.
+
+### Multimodal Handling
+
+- The library determines image / video support from the protocol and model ID; unknown models are treated as unsupported by default. Unsupported media is replaced with a text notice, while the rest of the text is preserved.
+- DeepSeek data URL images are uploaded to Files automatically. Upload bindings are preserved through `contentBlocks` for reuse in later conversation turns. This does not mean every DeepSeek model supports vision.
+- When using multimodal input or images in tool results, also confirm that the server and model support that input format.
+
+## License
+
+[MIT License](LICENSE)
