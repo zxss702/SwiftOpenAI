@@ -2,6 +2,7 @@ import Foundation
 
 struct ResponsesStreamState {
     var sseBuffer = SSEByteBuffer()
+    var isComplete = false
     var usage: ChatStreamResult.Choice.UsageInfo?
     var responseID: String?
     var resolvedModel: String?
@@ -28,6 +29,7 @@ nonisolated func processResponsesSSEBytes(
     state.sseBuffer.append(bytes)
 
     for line in state.sseBuffer.drainLines(finalize: finalize) {
+        if state.isComplete { break }
         try await processResponsesSSELine(
             line,
             actorHelper: actorHelper,
@@ -71,6 +73,7 @@ private nonisolated func processResponsesSSELine(
     let dataString = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
     guard !dataString.isEmpty else { return }
     if dataString == "[DONE]" {
+        state.isComplete = true
         return
     }
 
@@ -171,6 +174,7 @@ private nonisolated func processResponsesSSELine(
                 )
             }
         }
+        state.isComplete = true
 
     case "response.failed":
         if let response = json["response"] as? [String: Any],

@@ -2,6 +2,7 @@ import Foundation
 
 struct AnthropicStreamState {
     var sseBuffer = SSEByteBuffer()
+    var isComplete = false
     var usage: ChatStreamResult.Choice.UsageInfo?
     // Preserve provider counters across events before normalizing cached input.
     var rawUsage: [String: Any] = [:]
@@ -22,6 +23,7 @@ nonisolated func processAnthropicSSEBytes(
     state.sseBuffer.append(bytes)
 
     for line in state.sseBuffer.drainLines(finalize: finalize) {
+        if state.isComplete { break }
         try await processAnthropicSSELine(
             line,
             actorHelper: actorHelper,
@@ -51,7 +53,11 @@ private nonisolated func processAnthropicSSELine(
     guard line.hasPrefix("data:") else { return }
 
     let dataString = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-    guard !dataString.isEmpty, dataString != "[DONE]" else { return }
+    guard !dataString.isEmpty else { return }
+    if dataString == "[DONE]" {
+        state.isComplete = true
+        return
+    }
 
     guard let data = dataString.data(using: .utf8),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -187,7 +193,10 @@ private nonisolated func processAnthropicSSELine(
         let message = (errorObject?["message"] as? String) ?? dataString
         throw OpenAIError.invalidResponse(message, code: 200)
 
-    case "ping", "content_block_stop", "message_stop":
+    case "message_stop":
+        state.isComplete = true
+
+    case "ping", "content_block_stop":
         return
 
     default:

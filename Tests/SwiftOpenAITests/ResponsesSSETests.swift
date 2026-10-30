@@ -88,6 +88,101 @@ final class ResponsesSSETests: XCTestCase {
         XCTAssertEqual(state.usage?.cachedTokens, 3)
         XCTAssertEqual(state.usage?.reasoningTokens, 5)
         XCTAssertEqual(metadata.resolvedModel, "model-b")
+        XCTAssertTrue(state.isComplete)
+    }
+
+    func testCompletedEventStopsParsingAndPreservesFinalOutput() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = ResponsesStreamState()
+        var metadata = ChatResponseMetadata(
+            providerName: "openai-responses",
+            requestID: nil,
+            resolvedModel: "model-a",
+            resolvedBasePath: "/v1"
+        )
+        let completed = try TestFixtures.makeSSELine([
+            "type": "response.completed",
+            "response": [
+                "id": "resp_final",
+                "model": "model-final",
+                "output": [[
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [["type": "output_text", "text": "final answer"]]
+                ]],
+                "usage": ["input_tokens": 2, "output_tokens": 3, "total_tokens": 5]
+            ]
+        ])
+        let lateError = try TestFixtures.makeSSELine([
+            "type": "response.failed",
+            "response": ["error": ["message": "must be ignored"]]
+        ])
+        let lateDelta = try TestFixtures.makeSSELine([
+            "type": "response.output_text.delta",
+            "delta": "must be ignored"
+        ])
+
+        try await processResponsesSSEBytes(
+            Data((completed + "\n" + lateError + "\n" + lateDelta).utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata
+        )
+        XCTAssertTrue(state.isComplete)
+        try await processResponsesSSEBytes(
+            Data(),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+
+        let fullText = await helper.fullText
+        XCTAssertEqual(fullText, "final answer")
+        XCTAssertEqual(state.outputItems.count, 1)
+        XCTAssertEqual(state.responseID, "resp_final")
+        XCTAssertEqual(state.usage?.totalTokens, 5)
+        XCTAssertEqual(metadata.resolvedModel, "model-final")
+    }
+
+    func testSplitDoneWithoutTrailingNewlineStopsLaterChunks() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = ResponsesStreamState()
+        var metadata = ChatResponseMetadata(
+            providerName: "openai-responses",
+            requestID: nil,
+            resolvedModel: "m",
+            resolvedBasePath: "/v1"
+        )
+        let text = try TestFixtures.makeSSELine([
+            "type": "response.output_text.delta",
+            "delta": "kept"
+        ])
+        try await processResponsesSSEBytes(
+            Data((text + "\ndata: [DO").utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata
+        )
+        XCTAssertFalse(state.isComplete)
+        try await processResponsesSSEBytes(
+            Data("NE]".utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+        XCTAssertTrue(state.isComplete)
+        try await processResponsesSSEBytes(
+            Data((text + "\n").utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+
+        let fullText = await helper.fullText
+        XCTAssertEqual(fullText, "kept")
     }
 
     func testFailedEventThrows() async throws {

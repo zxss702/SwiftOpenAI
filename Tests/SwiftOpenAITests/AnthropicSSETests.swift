@@ -127,6 +127,92 @@ final class AnthropicSSETests: XCTestCase {
         XCTAssertEqual(state.usage?.promptTokens, 10)
         XCTAssertEqual(state.usage?.completionTokens, 22)
         XCTAssertEqual(state.usage?.totalTokens, 32)
+        XCTAssertTrue(state.isComplete)
+    }
+
+    func testMessageStopStopsParsingAndFinalizesContentBlocks() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = AnthropicStreamState()
+        var metadata = ChatResponseMetadata(
+            providerName: "anthropic",
+            requestID: nil,
+            resolvedModel: "claude-a",
+            resolvedBasePath: "/v1"
+        )
+        let text = try TestFixtures.makeSSELine([
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": ["type": "text_delta", "text": "kept"]
+        ])
+        let stop = try TestFixtures.makeSSELine(["type": "message_stop"])
+        let lateError = try TestFixtures.makeSSELine([
+            "type": "error",
+            "error": ["message": "must be ignored"]
+        ])
+        try await processAnthropicSSEBytes(
+            Data((text + "\n" + stop + "\n" + lateError + "\n" + text).utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata
+        )
+        XCTAssertTrue(state.isComplete)
+        try await processAnthropicSSEBytes(
+            Data(),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+
+        let fullText = await helper.fullText
+        let blocks = await helper.anthropicContentBlocks
+        XCTAssertEqual(fullText, "kept")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0]["type"], .string("text"))
+        XCTAssertEqual(blocks[0]["text"], .string("kept"))
+    }
+
+    func testSplitDoneWithoutTrailingNewlineStopsLaterChunks() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = AnthropicStreamState()
+        var metadata = ChatResponseMetadata(
+            providerName: "anthropic",
+            requestID: nil,
+            resolvedModel: "m",
+            resolvedBasePath: "/v1"
+        )
+        let text = try TestFixtures.makeSSELine([
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": ["type": "text_delta", "text": "kept"]
+        ])
+        try await processAnthropicSSEBytes(
+            Data((text + "\ndata: [DO").utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata
+        )
+        XCTAssertFalse(state.isComplete)
+        try await processAnthropicSSEBytes(
+            Data("NE]".utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+        XCTAssertTrue(state.isComplete)
+        try await processAnthropicSSEBytes(
+            Data((text + "\n").utf8),
+            actorHelper: helper,
+            state: &state,
+            metadata: &metadata,
+            finalize: true
+        )
+
+        let fullText = await helper.fullText
+        let blocks = await helper.anthropicContentBlocks
+        XCTAssertEqual(fullText, "kept")
+        XCTAssertEqual(blocks[0]["text"], .string("kept"))
     }
 
     func testErrorEventThrows() async throws {
