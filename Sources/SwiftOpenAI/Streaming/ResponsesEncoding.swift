@@ -522,7 +522,7 @@ private nonisolated func encodeResponsesReasoning(
     }
     return [
         "effort": thinkLevel.rawValue,
-        "summary": "detailed"
+        "summary": "auto"
     ]
 }
 
