@@ -18,7 +18,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"604.0.0"),
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.15.1")
     ] + {
         #if os(Windows)
         return []
@@ -34,7 +34,8 @@ let package = Package(
             name: "SwiftOpenAI",
             dependencies: [
                 "SwiftOpenAIMacros",
-                .product(name: "Crypto", package: "swift-crypto")
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto")
             ] + {
                 #if os(Windows)
                 return []
@@ -56,7 +57,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftOpenAITests",
-            dependencies: ["SwiftOpenAI"]
+            dependencies: ["SwiftOpenAI", .product(name: "_CryptoExtras", package: "swift-crypto")]
         )
     ]
 )
