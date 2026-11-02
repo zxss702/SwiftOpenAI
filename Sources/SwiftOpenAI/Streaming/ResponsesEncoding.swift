@@ -178,10 +178,40 @@ nonisolated func makeResponsesRequestBody(
         body[key] = value.anyValue
     }
     if wireAPI == .codexResponses {
-        // Codex does not accept these fields, including overrides from extraBody.
-        for key in ["temperature", "top_p", "max_output_tokens"] {
+        // These constraints belong only to SIWC, never to ordinary Responses clients.
+        for key in ["background", "conversation", "max_output_tokens", "max_tool_calls", "metadata",
+                    "moderation", "multi_agent", "prompt", "prompt_cache_retention", "safety_identifier",
+                    "temperature", "top_logprobs", "top_p", "truncation", "user", "previous_response_id",
+                    "frequency_penalty", "presence_penalty", "stop"] {
             body.removeValue(forKey: key)
         }
+        body["store"] = false
+        body["stream"] = true
+        guard var input = body["input"] as? [[String: Any]] else {
+            throw OpenAIError.unsupportedParameterCombination("Codex input 必须是数组")
+        }
+        guard !input.contains(where: { $0["role"] as? String == "system" }) else {
+            throw OpenAIError.unsupportedParameterCombination("Codex 请使用 developer 消息或 instructions")
+        }
+        if let rawTools = body["tools"] {
+            guard let definitions = rawTools as? [[String: Any]] else {
+                throw OpenAIError.unsupportedParameterCombination("Codex tools 必须是数组")
+            }
+            var local: [[String: Any]] = []
+            var hosted: [[String: Any]] = []
+            for definition in definitions {
+                switch definition["type"] as? String {
+                case "function": local.append(definition)
+                case "web_search", "web_search_preview": hosted.append(definition)
+                default: throw OpenAIError.providerUnsupported("Codex 不支持此工具类型")
+                }
+            }
+            if !local.isEmpty {
+                input.insert(["type": "additional_tools", "role": "developer", "tools": local], at: 0)
+            }
+            body["tools"] = hosted.isEmpty ? nil : hosted
+        }
+        body["input"] = input
     }
     return body
 }

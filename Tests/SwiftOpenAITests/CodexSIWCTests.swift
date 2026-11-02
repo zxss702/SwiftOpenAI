@@ -3,6 +3,47 @@ import _CryptoExtras
 @testable import SwiftOpenAI
 
 final class CodexSIWCTests: XCTestCase {
+    func testSIWCConstraintsDoNotChangeAPIKeyResponses() throws {
+        for wire in [AIModelWireAPI.codexResponses, .responses] {
+            let body = try makeResponsesRequestBody(
+                modelID: "gpt-5.6-luna", messages: [.system("rules"), .user("hello")],
+                frequencyPenalty: nil, maxCompletionTokens: 100, parallelToolCalls: nil,
+                presencePenalty: nil, responseFormat: nil, stop: nil, temperature: 0.5,
+                toolChoice: nil, tools: nil, topP: 0.9, thinkLevel: nil,
+                extraBody: ["stream": .bool(false), "store": .bool(true),
+                    "previous_response_id": .string("resp_old"), "metadata": .object([:])],
+                baseURL: "https://api.openai.com/v1", wireAPI: wire)
+            if wire == .codexResponses {
+                XCTAssertEqual(body["stream"] as? Bool, true)
+                XCTAssertEqual(body["store"] as? Bool, false)
+                for key in ["temperature", "top_p", "max_output_tokens", "previous_response_id", "metadata"] {
+                    XCTAssertNil(body[key])
+                }
+            } else {
+                XCTAssertEqual(body["temperature"] as? Double, 0.5)
+                XCTAssertEqual(body["max_output_tokens"] as? Int, 100)
+                XCTAssertEqual(body["previous_response_id"] as? String, "resp_old")
+                XCTAssertEqual(body["store"] as? Bool, true)
+                XCTAssertEqual(body["stream"] as? Bool, false)
+            }
+        }
+    }
+
+    func testLocalToolsAreAddedToInputWithoutChangingTheirNames() throws {
+        let body = try makeResponsesRequestBody(
+            modelID: "gpt-5.6-luna", messages: [.user("hello")], frequencyPenalty: nil,
+            maxCompletionTokens: nil, parallelToolCalls: nil, presencePenalty: nil,
+            responseFormat: nil, stop: nil, temperature: nil, toolChoice: nil,
+            tools: nil, topP: nil, thinkLevel: nil,
+            extraBody: ["tools": .array([.object(["type": .string("function"), "name": .string("read_file"),
+                "parameters": .object(["type": .string("object")])])])], wireAPI: .codexResponses)
+        XCTAssertNil(body["tools"])
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.first?["type"] as? String, "additional_tools")
+        XCTAssertEqual(input.first?["role"] as? String, "developer")
+        XCTAssertEqual((input.first?["tools"] as? [[String: Any]])?.first?["name"] as? String, "read_file")
+    }
+
     func testStreamFailurePreservesCodeParamAndRequestID() async throws {
         let helper = OpenAISendMessageValueHelper()
         var state = ResponsesStreamState()
