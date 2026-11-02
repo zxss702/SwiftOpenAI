@@ -115,7 +115,7 @@ Select the protocol explicitly through `AIModelInfoValue`. All protocols use the
 | --- | --- | --- |
 | `.completions` | Chat Completions: `https://api.openai.com/v1/chat/completions` | Bearer API key |
 | `.responses` | Responses: `https://api.openai.com/v1/responses` | Bearer API key |
-| `.codex` | ChatGPT Codex: `https://chatgpt.com/backend-api/codex/responses` | access token + ChatGPT account ID |
+| `.codex` | ChatGPT plan (SIWC): `https://api.openai.com/v1/responses` | SIWC OAuth access token |
 | `.anthropic` | Anthropic Messages: `https://api.anthropic.com/v1/messages` | `x-api-key` + `anthropic-version` |
 
 ```swift
@@ -128,7 +128,7 @@ let responses = AIModelInfoValue.responses(
 )
 
 let codex = AIModelInfoValue.codex(
-    .init(accessToken: "YOUR_ACCESS_TOKEN", accountID: "YOUR_ACCOUNT_ID")
+    .init(accessToken: "YOUR_SIWC_ACCESS_TOKEN")
 )
 
 let anthropic = AIModelInfoValue.anthropic(
@@ -136,7 +136,7 @@ let anthropic = AIModelInfoValue.anthropic(
 )
 ```
 
-Use model IDs offered by your provider. Codex uses the ChatGPT backend; the library accepts existing credentials and does not handle login or token refresh.
+Use model IDs offered by your provider. Codex uses the public Responses endpoint with SIWC plan authorization; the library accepts existing credentials and does not handle login or token refresh.
 
 ### Custom Base URLs
 
@@ -156,7 +156,7 @@ Paths are completed according to the selected protocol:
 
 - **Completions / Responses**: A URL with no path gets `/v1/chat/completions` or `/v1/responses`. An existing path gets `/chat/completions` or `/responses` appended. A complete resource path is not appended again.
 - **Anthropic**: A URL with no path gets `/v1/messages`. A path ending in `/v1` gets only `/messages` appended. A custom prefix gets `/v1/messages` appended. A path already ending in `/messages` is kept as is.
-- **Codex**: Uses the ChatGPT backend shown in the table by default. You can specify a compatible backend with `baseURL`.
+- **Codex**: Uses the public SIWC Responses endpoint. Its route is fixed; API-key clients continue to use `.responses` and can customize their base URL.
 
 **The caller must select the protocol explicitly.** Setting a provider URL or changing the model ID does not switch protocols automatically. A service that advertises OpenAI compatibility does not necessarily support Responses or Anthropic Messages.
 
@@ -320,7 +320,7 @@ Unknown domains and proxy URLs use generic compatibility rules. The library does
 | Protocol | Behavior Callers Should Be Aware Of |
 | --- | --- |
 | Responses / Codex | Do not support `prediction`, `user`, or `n != 1`; passing them results in an unsupported-parameter-combination error. |
-| Codex | Automatically removes the request fields corresponding to `temperature`, `topP`, and `maxCompletionTokens`. |
+| Codex | Enforces SIWC preview constraints, including `store: false`, `stream: true`, stateless HTTP history and supported fields. Local function tools are supplied through `additional_tools` input items. |
 | Anthropic | Does not support `prediction`, `user`, `n != 1`, frequency / presence penalties, or `responseFormat`. When reasoning is enabled, required tool use or a specific function choice is changed to `auto`. |
 
 Use the unified `thinkLevel` parameter to choose reasoning intensity, such as `.high`. To disable reasoning, pass `ThinkLevel.none` explicitly; Swift interprets `.none` alone as the optional value `nil`. Supported levels depend on the service and model.
