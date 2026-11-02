@@ -59,6 +59,9 @@ nonisolated func executeResponsesStreamWithURLSession(
         session.invalidateAndCancel()
         guard (200...299).contains(statusCode) else {
             let text = String(data: responseBody, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
+            if metadata.providerName == "openai-codex" {
+                throw codexHTTPError(body: text, status: statusCode, requestID: metadata.requestID)
+            }
             throw mapDeepSeekBodyLimitError(message: text, code: statusCode)
         }
         try await processResponsesSSEBytes(
@@ -68,6 +71,10 @@ nonisolated func executeResponsesStreamWithURLSession(
             metadata: &metadata,
             finalize: true
         )
+
+        if metadata.providerName == "openai-codex", !state.receivedCompleted {
+            throw OpenAIError.streamingError("Codex stream ended without response.completed")
+        }
 
         if await actorHelper.hasPendingDelta() {
             let finalStreamResult = await actorHelper.getResult()

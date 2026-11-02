@@ -3,6 +3,24 @@ import _CryptoExtras
 @testable import SwiftOpenAI
 
 final class CodexSIWCTests: XCTestCase {
+    func testStreamFailurePreservesCodeParamAndRequestID() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = ResponsesStreamState()
+        var metadata = ChatResponseMetadata(providerName: "openai-codex", requestID: "req_test",
+            resolvedModel: "test", resolvedBasePath: "/v1")
+        let sse = try TestFixtures.makeSSELine(["type": "response.failed", "response": ["error": [
+            "code": "subscription_sharing_usage_unavailable", "param": "usage", "message": "try later"
+        ]]]) + "\n"
+        do {
+            try await processResponsesSSEBytes(Data(sse.utf8), actorHelper: helper, state: &state, metadata: &metadata)
+            XCTFail("Expected a structured SIWC error")
+        } catch let error as CodexResponseError {
+            XCTAssertEqual(error.code, "subscription_sharing_usage_unavailable")
+            XCTAssertEqual(error.param, "usage")
+            XCTAssertEqual(error.requestID, "req_test")
+        }
+    }
+
     func testIdentityRequiresSignatureAudienceNonceAndUnexpiredClaims() throws {
         let key = try _RSA.Signing.PrivateKey(keySize: .bits2048)
         let primitives = try key.publicKey.getKeyPrimitives()

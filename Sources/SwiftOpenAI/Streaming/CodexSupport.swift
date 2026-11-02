@@ -63,8 +63,14 @@ nonisolated func sendCodexResponsesMessage(
         fileBindings: offload.fileBindings
     )
 
-    return try await executeResponsesStream(
-        preparedRequest: prepared,
-        action: action
-    )
+    var retries = 0
+    while true {
+        do {
+            return try await executeResponsesStream(preparedRequest: prepared, action: action)
+        } catch let error as CodexResponseError where error.statusCode == 503 && retries < 2 {
+            // Only retry admission failures; never replay an already-open stream or its tool calls.
+            retries += 1
+            try await Task.sleep(for: .seconds(retries))
+        }
+    }
 }

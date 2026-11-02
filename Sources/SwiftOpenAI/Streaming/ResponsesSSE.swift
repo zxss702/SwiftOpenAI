@@ -3,6 +3,7 @@ import Foundation
 struct ResponsesStreamState {
     var sseBuffer = SSEByteBuffer()
     var isComplete = false
+    var receivedCompleted = false
     var usage: ChatStreamResult.Choice.UsageInfo?
     var responseID: String?
     var resolvedModel: String?
@@ -152,6 +153,7 @@ private nonisolated func processResponsesSSELine(
         )
 
     case "response.completed":
+        state.receivedCompleted = true
         if let response = json["response"] as? [String: Any] {
             state.responseID = response["id"] as? String ?? state.responseID
             // The completed output is authoritative; some providers only send item.done events.
@@ -180,9 +182,18 @@ private nonisolated func processResponsesSSELine(
         if let response = json["response"] as? [String: Any],
            let error = response["error"] as? [String: Any] {
             let message = (error["message"] as? String) ?? dataString
+            if metadata.providerName == "openai-codex" {
+                throw CodexResponseError(statusCode: 200, code: error["code"] as? String,
+                    param: error["param"] as? String, message: message, requestID: metadata.requestID)
+            }
             throw OpenAIError.invalidResponse(message, code: 200)
         }
         throw OpenAIError.invalidResponse(dataString, code: 200)
+
+    case "error" where metadata.providerName == "openai-codex":
+        throw CodexResponseError(statusCode: 200, code: json["code"] as? String,
+            param: json["param"] as? String, message: json["message"] as? String ?? dataString,
+            requestID: metadata.requestID)
 
     case "response.incomplete":
         let reason = ((json["response"] as? [String: Any])?["incomplete_details"] as? [String: Any])?["reason"] as? String

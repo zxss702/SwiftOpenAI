@@ -106,6 +106,10 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await responsesBodyString(from: response.body)
+        if preparedRequest.metadata.providerName == "openai-codex" {
+            throw codexHTTPError(body: responseBody, status: Int(response.status.code),
+                requestID: ProviderResponseNormalizer.requestID(from: response.headers))
+        }
         throw mapDeepSeekBodyLimitError(
             message: responseBody,
             code: Int(response.status.code)
@@ -146,6 +150,10 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
         metadata: &metadata,
         finalize: true
     )
+
+    if metadata.providerName == "openai-codex", !state.receivedCompleted {
+        throw OpenAIError.streamingError("Codex stream ended without response.completed")
+    }
 
     if await actorHelper.hasPendingDelta() {
         let finalStreamResult = await actorHelper.getResult()
