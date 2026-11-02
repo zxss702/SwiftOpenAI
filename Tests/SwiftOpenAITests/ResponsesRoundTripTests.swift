@@ -101,7 +101,7 @@ final class ResponsesRoundTripTests: XCTestCase {
             var state = ResponsesStreamState()
             var metadata = ChatResponseMetadata(
                 providerName: "openai-codex", requestID: nil,
-                resolvedModel: "gpt-6.1-sol", resolvedBasePath: "/backend-api/codex"
+                resolvedModel: "gpt-6.1-sol", resolvedBasePath: "/v1"
             )
             var events: [[String: Any]] = []
             if mode != .completed {

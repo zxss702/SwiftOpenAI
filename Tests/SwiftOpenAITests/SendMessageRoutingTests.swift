@@ -26,7 +26,7 @@ final class SendMessageRoutingTests: XCTestCase {
     func testCodexBranchRejectsPredictionBeforeNetwork() async {
         do {
             _ = try await sendMessage(
-                modelInfo: .codex(.init(accessToken: "access-token", accountID: "account-id")),
+                modelInfo: .codex(.init(accessToken: "access-token")),
                 messages: [.user("hello")],
                 prediction: .init(type: "content", content: "prefill")
             ) { _ in }

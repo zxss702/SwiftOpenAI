@@ -27,7 +27,7 @@ private final class RoutingMessageHistory {
 
 final class CodexRoutingIntegrationTests: XCTestCase {
     @MainActor
-    func testHTTPResultSurvivesSwiftDataAndRoutesNextToolRequestToSameTurn() async throws {
+    func testSIWCToolHistorySurvivesSwiftDataWithoutBackendRouting() async throws {
         let output: [[String: Any]] = [[
             "type": "function_call", "id": "fc_1", "call_id": "call_1",
             "name": "message_user", "arguments": #"{"content":"你好","name":"打招呼"}"#,
@@ -43,9 +43,6 @@ final class CodexRoutingIntegrationTests: XCTestCase {
         let first = try prepare(port: port, messages: initial)
         let result = try await executeResponsesStream(preparedRequest: first) { _ in }
         let blocks = try XCTUnwrap(result.contentBlocks)
-        XCTAssertEqual(blocks.codexSessionID, first.urlRequest.value(forHTTPHeaderField: "session-id"))
-        XCTAssertEqual(blocks.codexTurnState, "server-issued-turn-token")
-        XCTAssertEqual(blocks.codexTurnScope, first.codexTurnScope)
         let reply = OpenAIMessage.assistant(
             result.fullText,
             toolCalls: result.allToolCalls.map {
@@ -83,19 +80,33 @@ final class CodexRoutingIntegrationTests: XCTestCase {
         let requests = server.requests
         XCTAssertEqual(requests.count, 2)
         guard requests.count == 2 else { return }
-        XCTAssertEqual(requests[0]["session-id"], requests[1]["session-id"])
+        XCTAssertNil(requests[0]["session-id"])
+        XCTAssertNil(requests[1]["session-id"])
         XCTAssertNil(requests[0]["x-codex-turn-state"])
-        XCTAssertEqual(requests[1]["x-codex-turn-state"], "server-issued-turn-token")
-        XCTAssertEqual(first.codexTurnScope, second.codexTurnScope)
+        XCTAssertNil(requests[1]["x-codex-turn-state"])
+    }
+
+    func testSIWCRejectsDONEAndInterruptedStreamsWithoutCompletedEvent() async throws {
+        for sse in ["data: [DONE]\n\n", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"] {
+            let server = try RoutingHTTPServer(sse: sse)
+            let port = try await server.start()
+            defer { server.stop() }
+            do {
+                _ = try await executeResponsesStream(preparedRequest: prepare(port: port, messages: [.user("hello")])) { _ in }
+                XCTFail("An incomplete SIWC stream must fail")
+            } catch OpenAIError.streamingError {
+                // Expected: only response.completed can complete SIWC inference.
+            }
+        }
     }
 
     private func prepare(port: UInt16, messages: [OpenAIMessage]) throws -> PreparedResponsesRequest {
-        let baseURL = "http://127.0.0.1:\(port)/backend-api/codex"
+        let baseURL = "http://127.0.0.1:\(port)/v1"
         return try makeResponsesURLRequest(
             config: .init(
                 modelID: "gpt-6.1-sol", baseURL: try APIBaseURL.parse(baseURL),
-                resolvedBasePath: "/backend-api/codex", providerName: "openai-codex",
-                defaultHeaders: ["Authorization": "Bearer test-token", "ChatGPT-Account-ID": "test-account"]
+                resolvedBasePath: "/v1", providerName: "openai-codex",
+                defaultHeaders: ["Authorization": "Bearer test-token"]
             ),
             messages: messages, frequencyPenalty: nil, maxCompletionTokens: nil, parallelToolCalls: true,
             presencePenalty: nil, responseFormat: nil, stop: nil, temperature: nil, toolChoice: nil,

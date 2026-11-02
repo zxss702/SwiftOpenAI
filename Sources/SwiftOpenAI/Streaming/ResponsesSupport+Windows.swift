@@ -20,7 +20,6 @@ nonisolated func executeResponsesStreamWithURLSession(
         var statusCode = 0
         var responseBody = Data()
         var lastSendTime = Date().timeIntervalSince1970
-        var codexTurnState = preparedRequest.codexTurnState(received: nil)
 
         streamLoop: for try await event in stream {
             try Task.checkCancellation()
@@ -28,9 +27,6 @@ nonisolated func executeResponsesStreamWithURLSession(
             case .response(let response):
                 statusCode = response.statusCode
                 metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: response))
-                codexTurnState = preparedRequest.codexTurnState(
-                    received: response.value(forHTTPHeaderField: "x-codex-turn-state")
-                )
             case .data(let data):
                 if !(200...299).contains(statusCode) {
                     responseBody.append(data)
@@ -94,11 +90,7 @@ nonisolated func executeResponsesStreamWithURLSession(
             contentBlocks: mergeContentBlocksForResult(
                 anthropic: nil,
                 fileBindings: preparedRequest.fileBindings,
-                responses: ResponsesMessageContext(outputItems: state.outputItems),
-                codexSessionID: metadata.providerName == "openai-codex"
-                    ? preparedRequest.urlRequest.value(forHTTPHeaderField: "session-id") : nil,
-                codexTurnState: codexTurnState,
-                codexTurnScope: codexTurnState == nil ? nil : preparedRequest.codexTurnScope
+                responses: ResponsesMessageContext(outputItems: state.outputItems)
             )
         )
     } onCancel: {

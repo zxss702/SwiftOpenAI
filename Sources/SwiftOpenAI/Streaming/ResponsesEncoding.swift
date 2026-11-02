@@ -16,22 +16,6 @@ struct PreparedResponsesRequest: Sendable {
     let metadata: ChatResponseMetadata
     let fileBindings: [String: FileBinding]
 
-    nonisolated var codexTurnScope: String? {
-        guard metadata.providerName == "openai-codex" else { return nil }
-        return codexRoutingScope(for: urlRequest, modelID: metadata.resolvedModel)
-    }
-
-    nonisolated func codexTurnState(received: String?) -> String? {
-        guard codexTurnScope != nil else { return nil }
-        // Keep the first server token unchanged throughout the tool turn.
-        return urlRequest.value(forHTTPHeaderField: "x-codex-turn-state") ?? received
-    }
-}
-
-private nonisolated func codexRoutingScope(for request: URLRequest, modelID: String) -> String? {
-    guard let url = request.url, let sessionID = request.value(forHTTPHeaderField: "session-id") else { return nil }
-    let account = request.value(forHTTPHeaderField: "ChatGPT-Account-ID") ?? ""
-    return ContentBlocksCrypto.sha256Hex(of: Data("\(url.absoluteString)\n\(account)\n\(modelID)\n\(sessionID)".utf8))
 }
 
 nonisolated func validateResponsesParameters(
@@ -109,34 +93,6 @@ nonisolated func makeResponsesURLRequest(
     for (key, value) in config.defaultHeaders {
         request.setValue(value, forHTTPHeaderField: key)
     }
-    if config.providerName == "openai-codex",
-       request.value(forHTTPHeaderField: "session-id")?.isEmpty != false {
-        // The ChatGPT backend derives cache affinity from session-id, independently of
-        // the public Responses API's prompt_cache_key. Continue the persisted conversation.
-        let sessionID = messages.reversed().lazy.compactMap { message -> String? in
-            guard case .assistant(let assistant) = message,
-                  let id = assistant.contentBlocks?.codexSessionID, !id.isEmpty else { return nil }
-            return id
-        }.first ?? UUID().uuidString
-        request.setValue(sessionID, forHTTPHeaderField: "session-id")
-    }
-    if config.providerName == "openai-codex",
-       request.value(forHTTPHeaderField: "x-codex-turn-state")?.isEmpty != false {
-        let scope = codexRoutingScope(for: request, modelID: config.modelID)
-        for message in messages.reversed() {
-            if case .user = message { break }
-            guard case .assistant(let assistant) = message else { continue }
-            // A new user message or a completed assistant answer starts a new turn.
-            guard !(assistant.toolCalls?.isEmpty ?? true),
-                  let blocks = assistant.contentBlocks,
-                  blocks.codexTurnScope == scope,
-                  let state = blocks.codexTurnState, !state.isEmpty else { break }
-            if let context = blocks.responses, context.inputItems(for: assistant) == nil { break }
-            request.setValue(state, forHTTPHeaderField: "x-codex-turn-state")
-            break
-        }
-    }
-
     return PreparedResponsesRequest(
         urlRequest: request,
         metadata: ChatResponseMetadata(

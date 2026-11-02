@@ -9,44 +9,27 @@ public struct MessageContentBlocks: Codable, Sendable, Hashable {
     public var fileBindings: [String: FileBinding]?
     /// Responses 隐藏字段和分段映射；正文和工具参数始终来自 assistant 的 C 字段。
     public var responses: ResponsesMessageContext?
-    /// Codex 的会话缓存亲和性标识，通过 session-id 请求头回传。
-    public var codexSessionID: String?
-    /// Codex 同一轮工具调用的服务端路由令牌及所属会话/账户范围。
-    public var codexTurnState: String?
-    public var codexTurnScope: String?
 
     public init(
         anthropic: [[String: AnyCodableValue]]? = nil,
         fileBindings: [String: FileBinding]? = nil,
-        responses: ResponsesMessageContext? = nil,
-        codexSessionID: String? = nil,
-        codexTurnState: String? = nil,
-        codexTurnScope: String? = nil
+        responses: ResponsesMessageContext? = nil
     ) {
         self.anthropic = anthropic
         self.fileBindings = fileBindings
         self.responses = responses
-        self.codexSessionID = codexSessionID
-        self.codexTurnState = codexTurnState
-        self.codexTurnScope = codexTurnScope
     }
 
     private enum CodingKeys: String, CodingKey {
         case anthropic
         case fileBindings = "file_bindings"
         case responses
-        case codexSessionID = "codex_session_id"
-        case codexTurnState = "codex_turn_state"
-        case codexTurnScope = "codex_turn_scope"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         anthropic = try container.decodeIfPresent([[String: AnyCodableValue]].self, forKey: .anthropic)
         fileBindings = try container.decodeIfPresent([String: FileBinding].self, forKey: .fileBindings)
-        codexSessionID = try container.decodeIfPresent(String.self, forKey: .codexSessionID)
-        codexTurnState = try container.decodeIfPresent(String.self, forKey: .codexTurnState)
-        codexTurnScope = try container.decodeIfPresent(String.self, forKey: .codexTurnScope)
         if let legacy = try? container.decode([[String: AnyCodableValue]].self, forKey: .responses) {
             responses = ResponsesMessageContext(outputItems: legacy)
         } else {
@@ -93,11 +76,6 @@ public struct MessageContentBlocks: Codable, Sendable, Hashable {
         }
         if let responses = other.responses {
             copy.responses = responses
-        }
-        if let codexSessionID = other.codexSessionID {
-            copy.codexSessionID = codexSessionID
-            copy.codexTurnState = other.codexTurnState
-            copy.codexTurnScope = other.codexTurnScope
         }
         copy.mergeFileBindings(other.fileBindings)
         return copy

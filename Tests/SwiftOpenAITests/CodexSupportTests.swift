@@ -3,10 +3,9 @@ import XCTest
 
 final class CodexSupportTests: XCTestCase {
 
-    func testCodexRequestOmitsInstructionsAndUsesChatGPTHeaders() throws {
+    func testCodexRequestUsesPublicResponsesAndBearerOnly() throws {
         let codexInfo = AIModelInfoValue.CodexInfo(
-            accessToken: "access-token",
-            accountID: "account-id"
+            accessToken: "access-token"
         )
         let prepared = try makeResponsesURLRequest(
             config: ResponsesRequestConfig(
@@ -40,10 +39,10 @@ final class CodexSupportTests: XCTestCase {
 
         XCTAssertEqual(
             prepared.urlRequest.url?.absoluteString,
-            "https://chatgpt.com/backend-api/codex/responses"
+            "https://api.openai.com/v1/responses"
         )
         XCTAssertEqual(prepared.urlRequest.value(forHTTPHeaderField: "Authorization"), "Bearer access-token")
-        XCTAssertEqual(prepared.urlRequest.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-id")
+        XCTAssertNil(prepared.urlRequest.value(forHTTPHeaderField: "ChatGPT-Account-ID"))
 
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertNil(body["instructions"])
@@ -65,7 +64,7 @@ final class CodexSupportTests: XCTestCase {
 
     func testCodexSystemAndReminderOnlyStayInInputAsDeveloperMessages() throws {
         let body = try makeCodexResponsesRequestBody(
-            modelInfo: .init(accessToken: "t", accountID: "a", modelID: "gpt-5.4"),
+            modelInfo: .init(accessToken: "t", modelID: "gpt-5.4"),
             messages: [
                 .system("codex system"),
                 .reminder("codex reminder")

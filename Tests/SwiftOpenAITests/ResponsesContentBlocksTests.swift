@@ -40,7 +40,7 @@ final class ResponsesContentBlocksTests: XCTestCase {
             providerName: "openai-codex",
             requestID: nil,
             resolvedModel: "gpt-6.1-sol",
-            resolvedBasePath: "/backend-api/codex"
+            resolvedBasePath: "/v1"
         )
         let events = try [
             TestFixtures.makeSSELine([

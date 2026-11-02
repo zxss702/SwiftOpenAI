@@ -29,23 +29,21 @@ final class AIModelInfoTests: XCTestCase {
         XCTAssertEqual(info.responsesInfo?.defaultHeaders["Authorization"], "Bearer api-key")
     }
 
-    func testCodexInfoExposesChatGPTHeaders() {
+    func testCodexInfoUsesSIWCBearerAndPublicAPI() {
         let info = AIModelInfoValue.codex(
             .init(
                 accessToken: "access-token",
-                accountID: "account-id",
-                modelID: "gpt-5.4",
-                isFedRAMPAccount: true
+                modelID: "gpt-5.4"
             )
         )
         XCTAssertTrue(info.isCodex)
         XCTAssertEqual(info.wireAPI, .codexResponses)
         XCTAssertEqual(info.token, "access-token")
-        XCTAssertEqual(info.baseURL, "https://chatgpt.com/backend-api/codex")
-        XCTAssertEqual(info.configuredPath, "/backend-api/codex")
+        XCTAssertEqual(info.baseURL, "https://api.openai.com/v1")
+        XCTAssertEqual(info.configuredPath, "/v1")
         XCTAssertEqual(info.codexInfo?.defaultHeaders["Authorization"], "Bearer access-token")
-        XCTAssertEqual(info.codexInfo?.defaultHeaders["ChatGPT-Account-ID"], "account-id")
-        XCTAssertEqual(info.codexInfo?.defaultHeaders["X-OpenAI-Fedramp"], "true")
+        XCTAssertNil(info.codexInfo?.defaultHeaders["ChatGPT-Account-ID"])
+        XCTAssertNil(info.codexInfo?.defaultHeaders["X-OpenAI-Fedramp"])
     }
 
     func testAnthropicInfoExposesKeyHeadersAndBaseURL() {

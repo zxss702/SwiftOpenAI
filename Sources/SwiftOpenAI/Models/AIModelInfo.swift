@@ -223,41 +223,21 @@ public enum AIModelInfoValue: Sendable, Codable, Hashable {
         }
     }
 
+    /// Sign in with ChatGPT 套餐授权；保留 Codex 命名，与 API key Responses 配置分离。
     public struct CodexInfo: Sendable, Codable, Hashable {
         public let accessToken: String
-        public let accountID: String
         public let modelID: String
-        /// API 根 URL（默认 `https://chatgpt.com/backend-api/codex`，请求时追加 `/responses`）
-        public let baseURL: String
-        public let isFedRAMPAccount: Bool
+        public var baseURL: String { "https://api.openai.com/v1" }
 
-        public init(
-            accessToken: String,
-            accountID: String,
-            modelID: String = "gpt-5.4",
-            baseURL: String = "https://chatgpt.com/backend-api/codex",
-            isFedRAMPAccount: Bool = false
-        ) {
+        public init(accessToken: String, modelID: String = "gpt-5.6-luna") {
             self.accessToken = accessToken
-            self.accountID = accountID
             self.modelID = modelID
-            self.baseURL = APIBaseURL.normalize(baseURL)
-            self.isFedRAMPAccount = isFedRAMPAccount
         }
 
-        public var resolvedURL: URL? {
-            try? APIBaseURL.parse(baseURL)
-        }
+        public var resolvedURL: URL? { URL(string: baseURL) }
 
         public var defaultHeaders: [String: String] {
-            var headers: [String: String] = [
-                "Authorization": "Bearer \(accessToken)",
-                "ChatGPT-Account-ID": accountID
-            ]
-            if isFedRAMPAccount {
-                headers["X-OpenAI-Fedramp"] = "true"
-            }
-            return headers
+            ["Authorization": "Bearer \(accessToken)"]
         }
     }
 
