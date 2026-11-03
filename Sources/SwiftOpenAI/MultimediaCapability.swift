@@ -33,7 +33,13 @@ enum MultimediaCapabilityResolver {
             capability.supportsVideo = false
         }
 
+        if id.hasPrefix("gpt-") || id.hasPrefix("chatgpt-")
+            || id == "o1" || id.hasPrefix("o1-") || id == "o3" || id.hasPrefix("o3-") || id.hasPrefix("o4") {
+            capability.supportsImage = true
+        }
+
         if family == .openai {
+            capability.supportsImage = true
             capability.supportsVideo = false
         }
 
