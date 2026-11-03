@@ -12,6 +12,22 @@ final class MultimediaCapabilityTests: XCTestCase {
         XCTAssertEqual(cap, .none)
     }
 
+    func testGPTImageDiscoveryAcrossResponsesRoutesAndHosts() {
+        for family in [ProviderFamily.openai, .genericOpenAICompatible] {
+            for wireAPI in [AIModelWireAPI.completions, .responses, .codexResponses] {
+                for model in ["gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra", "chatgpt-6.1-latest", "openai/gpt-6.1-terra", "gpt-image-1", "chatgpt-image-latest", "gpt-5.3-codex-spark"] {
+                    let cap = MultimediaCapabilityResolver.resolve(family: family, wireAPI: wireAPI, model: model)
+                    XCTAssertEqual(cap, MultimediaCapability(supportsImage: true, supportsVideo: false), "\(family) \(wireAPI) \(model)")
+                }
+                for model in ["terra", "unknown-text-model"] {
+                    let cap = MultimediaCapabilityResolver.resolve(family: family, wireAPI: wireAPI, model: model)
+                    XCTAssertEqual(cap.supportsImage, family == .openai || wireAPI == .codexResponses, "\(family) \(wireAPI) \(model)")
+                    XCTAssertFalse(cap.supportsVideo)
+                }
+            }
+        }
+    }
+
     func testGlobalImageDiscovery() {
         let cases: [(String, Bool, Bool)] = [
             ("gpt-4o", true, false),
@@ -28,8 +44,8 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("kimi-k3", true, true),
             ("deepseek-v4-flash-vision-exp", true, false),
             ("qwen-plus", false, false),
-            ("deepseek-chat", true, false),
-            ("gpt-image-1", false, false),
+            ("deepseek-chat", false, false),
+            ("gpt-image-1", true, false),
             ("grok-3", false, false),
             ("grok-2-vision", true, false),
             ("grok-4.6", true, false),
@@ -51,7 +67,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("llama-4-maverick", true, false),
             ("gemma-4-31b-it", true, true),
             ("o3", true, false),
-            ("o3-mini", false, false),
+            ("o3-mini", true, false),
             ("o4-mini", true, false),
             ("us.anthropic.claude-sonnet-5", true, false),
             ("opencode-go/kimi-k3", true, true),
@@ -64,7 +80,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("step-3.7-flash", true, true),
             ("minicpm-v-4.5", true, false),
             ("claude-fable-5", true, false),
-            ("gpt-5.3-codex-spark", false, false),
+            ("gpt-5.3-codex-spark", true, false),
         ]
 
         for (model, expectImage, expectVideo) in cases {

@@ -3,6 +3,57 @@ import XCTest
 
 final class CodexSupportTests: XCTestCase {
 
+    func testCodexRequestRetainsUserAndReadToolImages() throws {
+        for model in [AIModelInfoValue.CodexInfo(accessToken: "t").modelID, "gpt-6.1-terra", "terra", "gpt-6.1-sol", "gpt-6-astra"] {
+            let info = AIModelInfoValue.CodexInfo(accessToken: "t", modelID: model)
+            let prepared = try makeResponsesURLRequest(
+                config: ResponsesRequestConfig(
+                    modelID: info.modelID,
+                    baseURL: try APIBaseURL.parse(info.baseURL),
+                    resolvedBasePath: APIBaseURL.configuredPath(of: info.baseURL),
+                    providerName: "openai-codex",
+                    defaultHeaders: info.defaultHeaders
+                ),
+                messages: [
+                    .user("inspect", images: [TestFixtures.tinyPNG], detail: .high),
+                    .assistant("", toolCalls: [
+                        .init(id: "call_read", function: .init(name: "read", arguments: "{}"))
+                    ]),
+                    .tool("page 1", images: [TestFixtures.tinyPNG], detail: .low, toolCallId: "call_read")
+                ],
+                frequencyPenalty: nil,
+                maxCompletionTokens: nil,
+                parallelToolCalls: nil,
+                presencePenalty: nil,
+                responseFormat: nil,
+                stop: nil,
+                temperature: nil,
+                toolChoice: nil,
+                tools: nil,
+                topP: nil,
+                thinkLevel: nil,
+                extraBody: nil,
+                extraHeaders: nil
+            )
+            let body = try TestFixtures.requestBody(from: prepared.urlRequest)
+            let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+            XCTAssertEqual(input.count, 3)
+            let userContent = try XCTUnwrap(input[0]["content"] as? [[String: Any]])
+            XCTAssertEqual(input[2]["type"] as? String, "function_call_output")
+            XCTAssertEqual(input[2]["call_id"] as? String, "call_read")
+            let toolContent = try XCTUnwrap(input[2]["output"] as? [[String: Any]])
+            let expectedURL = "data:image/png;base64,\(TestFixtures.tinyPNG.base64EncodedString())"
+            for (parts, text, detail) in [(userContent, "inspect", "high"), (toolContent, "page 1", "low")] {
+                XCTAssertEqual(parts.count, 2)
+                let textPart = try XCTUnwrap(parts.first { $0["type"] as? String == "input_text" })
+                let imagePart = try XCTUnwrap(parts.first { $0["type"] as? String == "input_image" })
+                XCTAssertEqual(textPart["text"] as? String, text)
+                XCTAssertEqual(imagePart["image_url"] as? String, expectedURL, model)
+                XCTAssertEqual(imagePart["detail"] as? String, detail)
+            }
+        }
+    }
+
     func testCodexRequestUsesPublicResponsesAndBearerOnly() throws {
         let codexInfo = AIModelInfoValue.CodexInfo(
             accessToken: "access-token"

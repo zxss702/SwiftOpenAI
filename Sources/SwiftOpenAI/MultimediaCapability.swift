@@ -9,7 +9,7 @@ struct MultimediaCapability: Sendable, Equatable {
 }
 
 enum MultimediaCapabilityResolver {
-    /// 按厂商线路 + 模型发现性匹配解析多模态能力。未知模型默认双 false。
+    /// 按厂商线路 + 模型匹配解析多模态能力；GPT 与 Codex 登录线路始终放通图像。
     static func resolve(
         family: ProviderFamily,
         wireAPI: AIModelWireAPI,
@@ -33,13 +33,18 @@ enum MultimediaCapabilityResolver {
             capability.supportsVideo = false
         }
 
-        if id.hasPrefix("gpt-") || id.hasPrefix("chatgpt-")
+        // GPT models and every Codex sign-in model (including aliases) pass images
+        // through without a local capability allowlist.
+        if wireAPI == .codexResponses || id.hasPrefix("gpt-") || id.hasPrefix("chatgpt-")
             || id == "o1" || id.hasPrefix("o1-") || id == "o3" || id.hasPrefix("o3-") || id.hasPrefix("o4") {
             capability.supportsImage = true
         }
 
         if family == .openai {
             capability.supportsImage = true
+            capability.supportsVideo = false
+        }
+        if wireAPI == .codexResponses {
             capability.supportsVideo = false
         }
 

@@ -138,6 +138,8 @@ let anthropic = AIModelInfoValue.anthropic(
 
 Use model IDs offered by your provider. Codex uses the public Responses endpoint with SIWC plan authorization; the library accepts existing credentials and does not handle login or token refresh.
 
+Images are passed through for all `gpt-` / `chatgpt-` model IDs and every Codex sign-in model, including aliases. This applies to both user attachments and tool results; the library does not filter their images by a local model allowlist.
+
 ### Custom Base URLs
 
 Each configuration accepts a `baseURL`, for example:
