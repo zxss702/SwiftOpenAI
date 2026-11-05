@@ -156,8 +156,8 @@ private nonisolated func processResponsesSSELine(
         state.receivedCompleted = true
         if let response = json["response"] as? [String: Any] {
             state.responseID = response["id"] as? String ?? state.responseID
-            // The completed output is authoritative; some providers only send item.done events.
-            if let output = response["output"] as? [[String: Any]] {
+            // SIWC 的完成事件可能携带空 output；保留 item.done 已收集的完整上下文。
+            if let output = response["output"] as? [[String: Any]], !output.isEmpty {
                 let outputData = try JSONSerialization.data(withJSONObject: output)
                 let items = try JSONDecoder().decode([[String: AnyCodableValue]].self, from: outputData)
                 state.outputItemsByIndex = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($0.offset, $0.element) })

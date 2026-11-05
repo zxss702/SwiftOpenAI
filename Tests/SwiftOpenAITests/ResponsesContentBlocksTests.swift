@@ -145,6 +145,48 @@ final class ResponsesContentBlocksTests: XCTestCase {
         XCTAssertEqual(state.outputItems, expected)
     }
 
+    func testEmptyCompletedOutputPreservesCodexContextThroughPersistenceAndReplay() async throws {
+        let helper = OpenAISendMessageValueHelper()
+        var state = ResponsesStreamState()
+        var metadata = ChatResponseMetadata(
+            providerName: "openai-codex", requestID: nil,
+            resolvedModel: "gpt-6.1-sol", resolvedBasePath: "/v1"
+        )
+        let output: [[String: Any]] = [
+            ["id": "rs_1", "type": "reasoning", "summary": [], "encrypted_content": "state"],
+            ["id": "fc_1", "type": "function_call", "call_id": "call_1",
+             "name": "check", "arguments": "{}", "status": "completed"]
+        ]
+        var events = try output.enumerated().map { index, item in
+            try TestFixtures.makeSSELine([
+                "type": "response.output_item.done", "output_index": index, "item": item
+            ])
+        }
+        events.append(try TestFixtures.makeSSELine([
+            "type": "response.completed", "response": ["id": "resp_1", "output": []]
+        ]))
+        try await processResponsesSSEBytes(
+            Data((events.joined(separator: "\n") + "\n").utf8),
+            actorHelper: helper, state: &state, metadata: &metadata, finalize: true
+        )
+        let expected = try JSONDecoder().decode(
+            [[String: AnyCodableValue]].self,
+            from: JSONSerialization.data(withJSONObject: output)
+        )
+        XCTAssertTrue(state.receivedCompleted)
+        XCTAssertEqual(state.outputItems, expected)
+        let assistant = try XCTUnwrap(ResponsesMessageContext.assistantMessage(from: state.outputItems))
+        let message = ChatQuery.ChatCompletionMessageParam.assistant(assistant)
+        let restored = try JSONDecoder().decode(
+            ChatQuery.ChatCompletionMessageParam.self, from: JSONEncoder().encode(message)
+        )
+        let replayed = try encodeResponsesInputItems([restored], wireAPI: .codexResponses)
+        XCTAssertEqual(try JSONDecoder().decode(
+            [[String: AnyCodableValue]].self,
+            from: JSONSerialization.data(withJSONObject: replayed)
+        ), expected)
+    }
+
     func testLegacyHistoryAndContentBlockMergingRemainCompatible() throws {
         let legacy = Data(#"{"role":"assistant","content":"legacy"}"#.utf8)
         let restored = try JSONDecoder().decode(OpenAIMessage.self, from: legacy)
