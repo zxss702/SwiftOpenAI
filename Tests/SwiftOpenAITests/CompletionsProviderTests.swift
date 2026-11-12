@@ -131,6 +131,24 @@ final class CompletionsProviderTests: XCTestCase {
         XCTAssertEqual(genericBody["reasoning_effort"] as? String, "max")
     }
 
+    func testDashScopeEncodesVideoPartWithTopLevelFPS() async throws {
+        let prepared = try await createChatRequest(
+            query: ChatQuery(
+                messages: [.user("vid", videoDatas: TestFixtures.tinyVideo, fps: 2)],
+                model: "qwen4-max-preview"
+            ),
+            configuration: TestFixtures.configuration(baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        )
+        let messages = try XCTUnwrap(
+            (try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])
+        )
+        let parts = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
+        let videoPart = try XCTUnwrap(parts.first { ($0["type"] as? String) == "video_url" })
+        XCTAssertEqual(videoPart["fps"] as? Double, 2)
+        XCTAssertNil((videoPart["video_url"] as? [String: Any])?["fps"])
+        XCTAssertNotNil((videoPart["video_url"] as? [String: Any])?["url"])
+    }
+
     func testToolStrictPassthroughAndStripping() async throws {
         let openai = try await createChatRequest(
             query: ChatQuery(messages: [.user("hello")], model: "gpt-5", tools: [TestFixtures.weatherTool(strict: nil)]),

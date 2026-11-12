@@ -408,14 +408,15 @@ enum ProviderRequestEncoder {
     }
 
     private static func encodeVideoURLPart(url: String, fps: Double?) -> [String: Any] {
-        var videoDict: [String: Any] = ["url": url]
-        if let fps {
-            videoDict["fps"] = fps
-        }
-        return [
+        // DashScope 要求 fps 位于 part 顶层，与 video_url 平级
+        var part: [String: Any] = [
             "type": "video_url",
-            "video_url": videoDict
+            "video_url": ["url": url]
         ]
+        if let fps {
+            part["fps"] = fps
+        }
+        return part
     }
 
     /// 按能力过滤图/视频：全不支持则降为纯文本；部分支持则保留可用 parts 并追加提示
