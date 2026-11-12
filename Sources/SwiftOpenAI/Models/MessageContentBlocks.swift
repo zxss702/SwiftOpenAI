@@ -48,14 +48,14 @@ public struct MessageContentBlocks: Codable, Sendable, Hashable {
         return host + path
     }
 
-    /// `fileBindings` 字典 key：`<SHA256 hex><basePath>`。
-    public static func fileBindingKey(sha256Hex: String, baseURL: String) -> String {
-        sha256Hex + fileBindingBasePath(from: baseURL)
+    /// `fileBindings` 字典 key：`<SHA256 hex><basePath>`；`modelID` 非空时追加（百炼文件与模型绑定）。
+    public static func fileBindingKey(sha256Hex: String, baseURL: String, modelID: String? = nil) -> String {
+        sha256Hex + fileBindingBasePath(from: baseURL) + (modelID ?? "")
     }
 
     /// 对图像 Data 直接生成绑定 key。
-    public static func fileBindingKey(imageData: Data, baseURL: String) -> String {
-        fileBindingKey(sha256Hex: ContentBlocksCrypto.sha256Hex(of: imageData), baseURL: baseURL)
+    public static func fileBindingKey(imageData: Data, baseURL: String, modelID: String? = nil) -> String {
+        fileBindingKey(sha256Hex: ContentBlocksCrypto.sha256Hex(of: imageData), baseURL: baseURL, modelID: modelID)
     }
 
     /// 合并 fileBindings（后者覆盖同 key）。

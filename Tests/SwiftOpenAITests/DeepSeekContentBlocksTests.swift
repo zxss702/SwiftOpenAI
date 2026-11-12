@@ -107,7 +107,7 @@ final class DeepSeekContentBlocksTests: XCTestCase {
         let messages: [ChatQuery.ChatCompletionMessageParam] = [
             .user("look", images: [TestFixtures.tinyPNG], detail: .auto)
         ]
-        let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+        let offload = try await offloadVisionMediaIfNeeded(
             messages: messages,
             baseURL: baseURL,
             modelID: "deepseek-v4-pro",
@@ -132,7 +132,7 @@ final class DeepSeekContentBlocksTests: XCTestCase {
         let messages: [ChatQuery.ChatCompletionMessageParam] = [
             .user("look", images: [TestFixtures.tinyPNG], detail: .auto)
         ]
-        let openai = try await offloadDeepSeekVisionImagesIfNeeded(
+        let openai = try await offloadVisionMediaIfNeeded(
             messages: messages,
             baseURL: "https://api.openai.com/v1",
             modelID: "deepseek-v4-flash-vision-exp",

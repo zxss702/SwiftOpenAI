@@ -25,6 +25,7 @@ public struct OpenAIUploadedFile: Codable, Sendable, Hashable {
 /// Upload an image for later `file_id` reference (DeepSeek Files API shape).
 ///
 /// - Parameter expiresAfterSeconds: 可选过期秒数。`nil`（默认）不传 `expires_after`，文件永久有效。
+/// - Parameter mimeType: 可选文件 MIME。`nil`（默认）按图像魔数嗅探；视频等非图像字节须显式传入。
 nonisolated public func uploadOpenAIFile(
     baseURL: String,
     bearerToken: String,
@@ -32,6 +33,7 @@ nonisolated public func uploadOpenAIFile(
     filename: String,
     purpose: String = "user_data",
     expiresAfterSeconds: Int? = nil,
+    mimeType: String? = nil,
     extraHeaders: [String: String]? = nil
 ) async throws -> OpenAIUploadedFile {
     let url = try APIBaseURL.appendFiles(to: baseURL)
@@ -57,7 +59,7 @@ nonisolated public func uploadOpenAIFile(
         append("\(expiresAfterSeconds)\r\n")
     }
 
-    let mime = mimeType(forImageData: fileData)
+    let mime = mimeType ?? SwiftOpenAI.mimeType(forImageData: fileData)
     append("--\(boundary)\r\n")
     append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
     append("Content-Type: \(mime)\r\n\r\n")
@@ -138,6 +140,14 @@ nonisolated func extensionForMimeType(_ mime: String) -> String {
     case "image/png": return "png"
     case "image/gif": return "gif"
     case "image/webp": return "webp"
+    case "video/mp4": return "mp4"
+    case "video/quicktime": return "mov"
+    case "video/webm": return "webm"
+    case "video/mpeg": return "mpeg"
+    case "video/x-msvideo": return "avi"
+    case "video/x-flv": return "flv"
+    case "video/x-ms-wmv": return "wmv"
+    case "video/3gpp": return "3gpp"
     default: return "jpg"
     }
 }

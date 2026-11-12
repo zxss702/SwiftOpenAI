@@ -23,7 +23,7 @@ nonisolated func sendCompletionsMessage(
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
     let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
-    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+    let offload = try await offloadVisionMediaIfNeeded(
         messages: messages,
         baseURL: modelInfo.baseURL,
         modelID: modelInfo.modelID,
@@ -156,7 +156,7 @@ nonisolated func sendCompletionsMessageSync(
     extraHeaders: [String: String]?
 ) async throws -> OpenAIChatResult {
     let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
-    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+    let offload = try await offloadVisionMediaIfNeeded(
         messages: messages,
         baseURL: modelInfo.baseURL,
         modelID: modelInfo.modelID,

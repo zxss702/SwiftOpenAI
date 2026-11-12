@@ -39,7 +39,7 @@ nonisolated func sendAnthropicMessage(
     )
 
     let priorBindings = MessageContentBlocks.aggregatedFileBindings(from: messages)
-    let offload = try await offloadDeepSeekVisionImagesIfNeeded(
+    let offload = try await offloadVisionMediaIfNeeded(
         messages: messages,
         baseURL: modelInfo.baseURL,
         modelID: modelInfo.modelID,
