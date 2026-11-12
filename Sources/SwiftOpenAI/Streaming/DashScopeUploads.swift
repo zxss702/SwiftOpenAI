@@ -40,7 +40,8 @@ private struct DashScopeUploadPolicyResponse: Decodable {
 ///
 /// - Note: 官方标注该接口不适合大规模生产使用；文件与 `modelID` 绑定，getPolicy 的 model
 ///   必须与后续调用模型完全一致；API Key 须与调用同一主账号；仅北京/新加坡地域。
-///   Token Plan（`token-plan*.maas.aliyuncs.com`，`sk-sp-` Key）的该端点无官方文档，按百炼同一流程实现；
+///   Token Plan（`token-plan*.maas.aliyuncs.com`，`sk-sp-` Key）网关未路由该端点（实测 404 空 body），
+///   ``offloadVisionMediaIfNeeded`` 对其跳过上传、保持内联 base64；
 ///   其条款要求仅限编程/智能体工具交互式使用，禁止自动化脚本、应用后端与批量调用，输入输出数据用于模型优化。
 nonisolated func uploadDashScopeTemporaryFile(
     baseURL: String,
@@ -48,7 +49,8 @@ nonisolated func uploadDashScopeTemporaryFile(
     modelID: String,
     fileData: Data,
     filename: String,
-    extraHeaders: [String: String]? = nil
+    extraHeaders: [String: String]? = nil,
+    session: URLSession = openAIURLSession
 ) async throws -> DashScopeTemporaryFile {
     guard var components = URLComponents(url: try APIBaseURL.parse(baseURL), resolvingAgainstBaseURL: false) else {
         throw OpenAIError.invalidURL
@@ -70,7 +72,7 @@ nonisolated func uploadDashScopeTemporaryFile(
         policyRequest.setValue(value, forHTTPHeaderField: key)
     }
 
-    let (policyData, policyResponse) = try await openAIURLSession.data(for: policyRequest)
+    let (policyData, policyResponse) = try await session.data(for: policyRequest)
     let policyStatus = (policyResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(policyStatus) else {
         let text = String(data: policyData, encoding: .utf8) ?? ""
@@ -121,7 +123,7 @@ nonisolated func uploadDashScopeTemporaryFile(
     uploadRequest.httpBody = body
     uploadRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-    let (uploadData, uploadResponse) = try await openAIURLSession.data(for: uploadRequest)
+    let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
     let uploadStatus = (uploadResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(uploadStatus) else {
         let text = String(data: uploadData, encoding: .utf8) ?? ""

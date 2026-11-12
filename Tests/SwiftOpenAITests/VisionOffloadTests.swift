@@ -164,4 +164,101 @@ final class VisionOffloadTests: XCTestCase {
         )
         XCTAssertNil(openai.urlRequest.value(forHTTPHeaderField: "X-DashScope-OssResourceResolve"))
     }
+
+    func testTokenPlanVisionMediaStaysInlineWithoutUpload() async throws {
+        // Token Plan 网关未路由 /api/v1/uploads（实测 404 空 body）：图像须保持内联 base64，不发起上传。
+        let baseURL = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        let messages: [ChatQuery.ChatCompletionMessageParam] = [
+            .user("look", images: [TestFixtures.tinyPNG], detail: .high),
+            .tool(ToolMessageParam(
+                content: .contentParts([
+                    .image(.init(imageUrl: .init(imageData: TestFixtures.tinyPNG)))
+                ]),
+                toolCallId: "call_1"
+            ))
+        ]
+        let offload = try await offloadVisionMediaIfNeeded(
+            messages: messages,
+            baseURL: baseURL,
+            modelID: dashScopeModel,
+            bearerToken: "sk-sp-test"
+        )
+        XCTAssertTrue(offload.fileBindings.isEmpty)
+
+        guard case .user(let user) = offload.messages.first,
+              case .contentParts(let userParts) = user.content,
+              case .image(let userImage) = userParts.first(where: {
+                  if case .image = $0 { return true }
+                  return false
+              })
+        else {
+            return XCTFail("expected user image part")
+        }
+        XCTAssertTrue(userImage.imageUrl.url.hasPrefix("data:image/"))
+
+        guard case .tool(let tool) = offload.messages.last,
+              case .contentParts(let toolParts) = tool.content,
+              case .image(let toolImage) = toolParts.first(where: {
+                  if case .image = $0 { return true }
+                  return false
+              })
+        else {
+            return XCTFail("expected tool image part")
+        }
+        XCTAssertTrue(toolImage.imageUrl.url.hasPrefix("data:image/"))
+    }
+
+    func testDashScopeUpload404FallsBackToInline() async throws {
+        // 无临时上传端点的地域/网关（如 dashscope-us）：getPolicy 404 → 保留原 part，不写绑定。
+        StubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data())
+        }
+        defer { StubURLProtocol.handler = nil }
+
+        var bindings: [String: FileBinding] = [:]
+        let dataURL = "data:image/png;base64,\(TestFixtures.tinyPNG.base64EncodedString())"
+        let result = try await resolveDashScopeFileURL(
+            forDataURL: dataURL,
+            bindings: &bindings,
+            baseURL: dashScopeBaseURL,
+            modelID: dashScopeModel,
+            bearerToken: "sk-test",
+            extraHeaders: nil,
+            session: StubURLProtocol.makeSession()
+        )
+        XCTAssertNil(result)
+        XCTAssertTrue(bindings.isEmpty)
+    }
+
+    func testDashScopeUploadNon404ErrorStillThrows() async throws {
+        // 404 以外的错误（如 401 Key 无效）须照常抛出，不得静默回退。
+        StubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(#"{"code":"InvalidApiKey","message":"No API-key provided."}"#.utf8))
+        }
+        defer { StubURLProtocol.handler = nil }
+
+        var bindings: [String: FileBinding] = [:]
+        let dataURL = "data:image/png;base64,\(TestFixtures.tinyPNG.base64EncodedString())"
+        do {
+            _ = try await resolveDashScopeFileURL(
+                forDataURL: dataURL,
+                bindings: &bindings,
+                baseURL: dashScopeBaseURL,
+                modelID: dashScopeModel,
+                bearerToken: "sk-test",
+                extraHeaders: nil,
+                session: StubURLProtocol.makeSession()
+            )
+            XCTFail("expected invalidResponse(401)")
+        } catch OpenAIError.invalidResponse(_, code: let code) {
+            XCTAssertEqual(code, 401)
+        }
+        XCTAssertTrue(bindings.isEmpty)
+    }
 }

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct VisionOffloadResult: Sendable {
     var messages: [ChatQuery.ChatCompletionMessageParam]
@@ -28,9 +31,11 @@ nonisolated func offloadVisionMediaIfNeeded(
     if shouldOffloadImagesToFilesAPI(baseURL: baseURL, modelID: modelID) {
         target = .deepSeekFiles
     } else {
-        switch ProviderFamilyResolver.resolve(host: APIBaseURL.host(of: baseURL) ?? "") {
+        let host = APIBaseURL.host(of: baseURL) ?? ""
+        switch ProviderFamilyResolver.resolve(host: host) {
         case .dashscope:
-            target = .dashScopeOSS
+            // Token Plan 网关无 /api/v1/uploads（实测 404 空 body），图像保持内联 base64。
+            target = ProviderFamilyResolver.isTokenPlan(host: host) ? nil : .dashScopeOSS
         case .moonshot:
             target = .moonshotFiles
         default:
@@ -300,13 +305,14 @@ private nonisolated func resolveDeepSeekFileId(
     return uploaded.id
 }
 
-private nonisolated func resolveDashScopeFileURL(
+nonisolated func resolveDashScopeFileURL(
     forDataURL url: String,
     bindings: inout [String: FileBinding],
     baseURL: String,
     modelID: String,
     bearerToken: String,
-    extraHeaders: [String: String]?
+    extraHeaders: [String: String]?,
+    session: URLSession = openAIURLSession
 ) async throws -> String? {
     guard let payload = decodeDataURL(url) else {
         return nil
@@ -318,14 +324,21 @@ private nonisolated func resolveDashScopeFileURL(
         return existing.fileId
     }
     let filename = "upload.\(extensionForMimeType(payload.mimeType))"
-    let uploaded = try await uploadDashScopeTemporaryFile(
-        baseURL: baseURL,
-        bearerToken: bearerToken,
-        modelID: modelID,
-        fileData: payload.data,
-        filename: filename,
-        extraHeaders: extraHeaders
-    )
+    let uploaded: DashScopeTemporaryFile
+    do {
+        uploaded = try await uploadDashScopeTemporaryFile(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            modelID: modelID,
+            fileData: payload.data,
+            filename: filename,
+            extraHeaders: extraHeaders,
+            session: session
+        )
+    } catch OpenAIError.invalidResponse(_, code: 404) {
+        // 部分地域/网关（如 dashscope-us）无临时上传端点：回退内联 base64，不阻断请求。
+        return nil
+    }
     bindings[key] = FileBinding(
         fileId: uploaded.ossURL,
         expiresAt: uploaded.expiresAt,

@@ -194,7 +194,7 @@ enum ProviderFamilyResolver {
             || normalizedHost == "dashscope-intl.aliyuncs.com"
             || normalizedHost == "dashscope-us.aliyuncs.com"
             || normalizedHost.hasSuffix(".aliyuncs.com") && normalizedHost.contains("dashscope")
-            || normalizedHost.hasSuffix(".maas.aliyuncs.com") && normalizedHost.hasPrefix("token-plan") {
+            || isTokenPlan(host: normalizedHost) {
             // token-plan.* 为阿里 Token Plan（个人版订阅）OpenAI 兼容通道
             return .dashscope
         }
@@ -216,6 +216,13 @@ enum ProviderFamilyResolver {
             return String(trimmed[..<separatorIndex])
         }
         return trimmed
+    }
+
+    /// 是否为阿里 Token Plan（个人版订阅）OpenAI 兼容通道。
+    /// 其网关未路由百炼临时上传端点 `/api/v1/uploads`（实测 404 空 body），视觉媒体须保持内联 base64。
+    static func isTokenPlan(host: String) -> Bool {
+        let normalizedHost = normalize(host: host)
+        return normalizedHost.hasSuffix(".maas.aliyuncs.com") && normalizedHost.hasPrefix("token-plan")
     }
 }
 

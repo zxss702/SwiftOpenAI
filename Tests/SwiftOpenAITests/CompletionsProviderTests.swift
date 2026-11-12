@@ -22,6 +22,10 @@ final class CompletionsProviderTests: XCTestCase {
             .dashscope
         )
         XCTAssertEqual(ProviderFamilyResolver.resolve(host: "api.siliconflow.cn"), .genericOpenAICompatible)
+        XCTAssertTrue(ProviderFamilyResolver.isTokenPlan(host: "token-plan.cn-beijing.maas.aliyuncs.com"))
+        XCTAssertTrue(ProviderFamilyResolver.isTokenPlan(host: "Token-Plan.ap-southeast-1.maas.aliyuncs.com:443"))
+        XCTAssertFalse(ProviderFamilyResolver.isTokenPlan(host: "dashscope.aliyuncs.com"))
+        XCTAssertFalse(ProviderFamilyResolver.isTokenPlan(host: "other.maas.aliyuncs.com"))
     }
 
     func testOpenAIUsesMaxCompletionTokensAndReasoningEffort() async throws {
