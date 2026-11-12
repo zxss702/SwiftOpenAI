@@ -249,15 +249,17 @@ enum MultimediaCapabilityResolver {
             image = true
         }
 
-        // Qwen：VL/Omni/QVQ + 3.5/3.6/3.8 原生多模态；3.7-max 为纯文本
+        // Qwen：VL/Omni/QVQ + 3.5/3.6/3.8/4 原生多模态；3.6-max、3.7-max 为纯文本
         if id.contains("qwen") && (containsVLToken(id) || id.contains("vl")) {
             image = true
             video = true
         }
-        // 3.6-max 与 3.7-max 同为面向 Agent 负载的纯文本旗舰；ocr 变体仅支持图像。
+        // 3.6-max 与 3.7-max 同为面向 Agent 负载的纯文本旗舰；ocr 变体仅支持图像；
+        // 4 代全系放通（含 qwen4-max-preview，官方视觉理解矩阵已列入图像+视频）。
         if hasQwenGeneration(compact, "3-5")
             || hasQwenGeneration(compact, "3-6") && !compact.contains("max")
             || hasQwenGeneration(compact, "3-8")
+            || hasQwenGeneration(compact, "4")
         {
             image = true
             video = !compact.contains("ocr")
