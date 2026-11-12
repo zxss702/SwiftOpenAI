@@ -13,6 +13,14 @@ final class CompletionsProviderTests: XCTestCase {
         XCTAssertEqual(ProviderFamilyResolver.resolve(host: "api.minimax.io"), .minimax)
         XCTAssertEqual(ProviderFamilyResolver.resolve(host: "ark.cn-beijing.volces.com"), .volcengineArk)
         XCTAssertEqual(ProviderFamilyResolver.resolve(host: "api.deepseek.com"), .deepseek)
+        XCTAssertEqual(
+            ProviderFamilyResolver.resolve(host: "token-plan.ap-southeast-1.maas.aliyuncs.com"),
+            .dashscope
+        )
+        XCTAssertEqual(
+            ProviderFamilyResolver.resolve(host: "token-plan.cn-beijing.maas.aliyuncs.com"),
+            .dashscope
+        )
         XCTAssertEqual(ProviderFamilyResolver.resolve(host: "api.siliconflow.cn"), .genericOpenAICompatible)
     }
 
@@ -147,6 +155,28 @@ final class CompletionsProviderTests: XCTestCase {
         XCTAssertEqual(videoPart["fps"] as? Double, 2)
         XCTAssertNil((videoPart["video_url"] as? [String: Any])?["fps"])
         XCTAssertNotNil((videoPart["video_url"] as? [String: Any])?["url"])
+    }
+
+    func testMoonshotAndGenericFamiliesEncodeVideoPartWithoutFPS() async throws {
+        for (baseURL, model) in [
+            ("https://api.moonshot.cn/v1", "kimi-k3"),
+            ("https://api.siliconflow.cn/v1", "gemini-2.5-pro")
+        ] {
+            let prepared = try await createChatRequest(
+                query: ChatQuery(
+                    messages: [.user("vid", videoDatas: TestFixtures.tinyVideo, fps: 2)],
+                    model: model
+                ),
+                configuration: TestFixtures.configuration(baseURL: baseURL)
+            )
+            let messages = try XCTUnwrap(
+                (try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])
+            )
+            let parts = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
+            let videoPart = try XCTUnwrap(parts.first { ($0["type"] as? String) == "video_url" })
+            XCTAssertNil(videoPart["fps"], baseURL)
+            XCTAssertNotNil((videoPart["video_url"] as? [String: Any])?["url"])
+        }
     }
 
     func testToolStrictPassthroughAndStripping() async throws {

@@ -174,8 +174,10 @@ enum ProviderFamilyResolver {
             return .openai
         }
         if normalizedHost == "api.moonshot.cn"
+            || normalizedHost == "api.moonshot.ai"
             || normalizedHost == "api.kimi.com"
             || normalizedHost.hasSuffix(".moonshot.cn")
+            || normalizedHost.hasSuffix(".moonshot.ai")
             || normalizedHost.hasSuffix(".kimi.com") {
             return .moonshot
         }
@@ -191,7 +193,9 @@ enum ProviderFamilyResolver {
         if normalizedHost == "dashscope.aliyuncs.com"
             || normalizedHost == "dashscope-intl.aliyuncs.com"
             || normalizedHost == "dashscope-us.aliyuncs.com"
-            || normalizedHost.hasSuffix(".aliyuncs.com") && normalizedHost.contains("dashscope") {
+            || normalizedHost.hasSuffix(".aliyuncs.com") && normalizedHost.contains("dashscope")
+            || normalizedHost.hasSuffix(".maas.aliyuncs.com") && normalizedHost.hasPrefix("token-plan") {
+            // token-plan.* 为阿里 Token Plan（个人版订阅）OpenAI 兼容通道
             return .dashscope
         }
         if normalizedHost.hasSuffix(".volces.com") {
@@ -283,6 +287,10 @@ enum ProviderRequestEncoder {
         }
         if headers["X-Title"] == nil {
             headers["X-Title"] = OpenAIConfiguration.defaultXTitle
+        }
+        if family == .dashscope {
+            // 阿里侧解析请求体中的 `oss://` 临时文件 URL 所必需（含复用历史绑定的请求）。
+            headers["X-DashScope-OssResourceResolve"] = "enable"
         }
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
@@ -407,13 +415,13 @@ enum ProviderRequestEncoder {
         ]
     }
 
-    private static func encodeVideoURLPart(url: String, fps: Double?) -> [String: Any] {
-        // DashScope 要求 fps 位于 part 顶层，与 video_url 平级
+    private static func encodeVideoURLPart(url: String, fps: Double?, family: ProviderFamily) -> [String: Any] {
+        // fps 是 DashScope 特有扩展，且要求位于 part 顶层，与 video_url 平级；其他厂家一律不编码
         var part: [String: Any] = [
             "type": "video_url",
             "video_url": ["url": url]
         ]
-        if let fps {
+        if family == .dashscope, let fps {
             part["fps"] = fps
         }
         return part
@@ -456,6 +464,7 @@ enum ProviderRequestEncoder {
             var encoded: [String: Any] = ["role": "user"]
             encoded["content"] = encodeUserContent(
                 userMessage.content,
+                family: family,
                 capability: capability
             )
             if let name = userMessage.name {
@@ -495,6 +504,7 @@ enum ProviderRequestEncoder {
             ]
             encoded["content"] = encodeToolContent(
                 toolMessage.content,
+                family: family,
                 capability: capability
             )
             return encoded
@@ -522,6 +532,7 @@ enum ProviderRequestEncoder {
 
     private static func encodeUserContent(
         _ content: UserMessageParam.Content,
+        family: ProviderFamily,
         capability: MultimediaCapability
     ) -> Any {
         switch content {
@@ -570,7 +581,8 @@ enum ProviderRequestEncoder {
                         encodedParts.append(
                             encodeVideoURLPart(
                                 url: videoContent.videoUrl.url,
-                                fps: videoContent.videoUrl.fps
+                                fps: videoContent.videoUrl.fps,
+                                family: family
                             )
                         )
                     } else {
@@ -591,6 +603,7 @@ enum ProviderRequestEncoder {
 
     private static func encodeToolContent(
         _ content: ToolMessageParam.Content,
+        family: ProviderFamily,
         capability: MultimediaCapability
     ) -> Any {
         switch content {
@@ -639,7 +652,8 @@ enum ProviderRequestEncoder {
                         encodedParts.append(
                             encodeVideoURLPart(
                                 url: videoContent.videoUrl.url,
-                                fps: videoContent.videoUrl.fps
+                                fps: videoContent.videoUrl.fps,
+                                family: family
                             )
                         )
                     } else {
