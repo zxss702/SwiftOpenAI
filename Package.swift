@@ -57,7 +57,19 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftOpenAITests",
-            dependencies: ["SwiftOpenAI", .product(name: "_CryptoExtras", package: "swift-crypto")]
+            dependencies: [
+                "SwiftOpenAI",
+                .product(name: "_CryptoExtras", package: "swift-crypto")
+            ] + {
+                #if os(Windows)
+                return []
+                #else
+                return [
+                    .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                    .product(name: "NIOCore", package: "swift-nio")
+                ]
+                #endif
+            }()
         )
     ]
 )

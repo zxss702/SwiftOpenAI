@@ -110,7 +110,7 @@ nonisolated func createChatRequest(query: ChatQuery, configuration: OpenAIConfig
 #if !os(Windows)
 nonisolated private func executePreparedRequest(_ preparedRequest: PreparedChatRequest) async throws -> HTTPClientResponse {
     let request = try makeHTTPClientRequest(from: preparedRequest.urlRequest)
-    return try await openAIHTTPClient.execute(request, deadline: .distantFuture)
+    return try await executeHTTPClientWithRetry(request)
 }
 
 nonisolated private func makeHTTPClientRequest(from urlRequest: URLRequest) throws -> HTTPClientRequest {
@@ -172,23 +172,25 @@ nonisolated func createChatCompletionEnvelope(
     configuration: OpenAIConfiguration
 ) async throws -> ChatCompletionEnvelope {
     let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-    let response = try await executePreparedRequest(preparedRequest)
+    return try await withNetworkPathGuard {
+        let response = try await executePreparedRequest(preparedRequest)
 
-    guard (200...299).contains(Int(response.status.code)) else {
-        let responseBody = try await responseBodyString(from: response.body)
-        let statusCode = Int(response.status.code)
-        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
-    }
+        guard (200...299).contains(Int(response.status.code)) else {
+            let responseBody = try await responseBodyString(from: response.body)
+            let statusCode = Int(response.status.code)
+            throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+        }
 
-    do {
-        let data = try await collectBodyData(from: response.body)
-        let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
-        let metadata = preparedRequest.metadata.withRequestID(
-            ProviderResponseNormalizer.requestID(from: response.headers)
-        )
-        return ChatCompletionEnvelope(result: result, metadata: metadata)
-    } catch {
-        throw OpenAIError.decodingError(error)
+        do {
+            let data = try await collectBodyData(from: response.body)
+            let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
+            let metadata = preparedRequest.metadata.withRequestID(
+                ProviderResponseNormalizer.requestID(from: response.headers)
+            )
+            return ChatCompletionEnvelope(result: result, metadata: metadata)
+        } catch {
+            throw OpenAIError.decodingError(error)
+        }
     }
 }
 
@@ -200,50 +202,52 @@ nonisolated func createChatStreamEnvelopeStream(
         let task = Task { [configuration] in
             do {
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-                var streamState = ProviderStreamNormalizationState()
-                let response = try await executePreparedRequest(preparedRequest)
+                try await withNetworkPathGuard {
+                    var streamState = ProviderStreamNormalizationState()
+                    let response = try await executePreparedRequest(preparedRequest)
 
-                guard (200...299).contains(Int(response.status.code)) else {
-                    let responseBody = try await responseBodyString(from: response.body)
+                    guard (200...299).contains(Int(response.status.code)) else {
+                        let responseBody = try await responseBodyString(from: response.body)
+                        let statusCode = Int(response.status.code)
+                        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                    }
+
+                    let metadata = preparedRequest.metadata.withRequestID(
+                        ProviderResponseNormalizer.requestID(from: response.headers)
+                    )
                     let statusCode = Int(response.status.code)
-                    throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
-                }
 
-                let metadata = preparedRequest.metadata.withRequestID(
-                    ProviderResponseNormalizer.requestID(from: response.headers)
-                )
-                let statusCode = Int(response.status.code)
+                    var sseBuffer = SSEByteBuffer()
+                    for try await part in response.body {
+                        try Task.checkCancellation()
+                        if try processSSEBytes(
+                            part.sseDataBytes,
+                            buffer: &sseBuffer,
+                            statusCode: statusCode,
+                            metadata: metadata,
+                            family: preparedRequest.family,
+                            state: &streamState,
+                            continuation: continuation
+                        ) {
+                            return
+                        }
+                    }
 
-                var sseBuffer = SSEByteBuffer()
-                for try await part in response.body {
-                    try Task.checkCancellation()
                     if try processSSEBytes(
-                        part.sseDataBytes,
+                        Data(),
                         buffer: &sseBuffer,
                         statusCode: statusCode,
                         metadata: metadata,
                         family: preparedRequest.family,
                         state: &streamState,
-                        continuation: continuation
+                        continuation: continuation,
+                        finalize: true
                     ) {
                         return
                     }
-                }
 
-                if try processSSEBytes(
-                    Data(),
-                    buffer: &sseBuffer,
-                    statusCode: statusCode,
-                    metadata: metadata,
-                    family: preparedRequest.family,
-                    state: &streamState,
-                    continuation: continuation,
-                    finalize: true
-                ) {
-                    return
+                    continuation.finish()
                 }
-
-                continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
             }
@@ -290,7 +294,7 @@ private final class URLSessionStreamDelegate: NSObject, URLSessionDataDelegate, 
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
-            continuation.finish(throwing: error)
+            continuation.finish(throwing: mapURLSessionTransportError(error))
         } else {
             continuation.finish()
         }
@@ -316,23 +320,31 @@ nonisolated func createChatCompletionEnvelope(
     configuration: OpenAIConfiguration
 ) async throws -> ChatCompletionEnvelope {
     let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
-    let (data, response) = try await openAIURLSession.data(for: preparedRequest.urlRequest)
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw OpenAIError.invalidResponse("Invalid URLResponse type", code: 0)
-    }
-    guard (200...299).contains(httpResponse.statusCode) else {
-        let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
-        throw mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode)
-    }
+    return try await withNetworkPathGuard {
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await openAIURLSession.data(for: preparedRequest.urlRequest)
+        } catch {
+            throw mapURLSessionTransportError(error)
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIError.invalidResponse("Invalid URLResponse type", code: 0)
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
+            throw mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode)
+        }
 
-    do {
-        let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
-        let metadata = preparedRequest.metadata.withRequestID(
-            ProviderResponseNormalizer.requestID(from: httpResponse)
-        )
-        return ChatCompletionEnvelope(result: result, metadata: metadata)
-    } catch {
-        throw OpenAIError.decodingError(error)
+        do {
+            let result = try JSONDecoder().decode(ChatCompletionResult.self, from: data)
+            let metadata = preparedRequest.metadata.withRequestID(
+                ProviderResponseNormalizer.requestID(from: httpResponse)
+            )
+            return ChatCompletionEnvelope(result: result, metadata: metadata)
+        } catch {
+            throw OpenAIError.decodingError(error)
+        }
     }
 }
 
@@ -345,60 +357,62 @@ nonisolated func createChatStreamEnvelopeStream(
             do {
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
                 try Task.checkCancellation()
-                let (session, stream) = makeURLSessionStream(for: preparedRequest.urlRequest)
-                defer { session.invalidateAndCancel() }
+                try await withNetworkPathGuard {
+                    let (session, stream) = makeURLSessionStream(for: preparedRequest.urlRequest)
+                    defer { session.invalidateAndCancel() }
 
-                try await withTaskCancellationHandler {
-                    var streamState = ProviderStreamNormalizationState()
-                    var sseBuffer = SSEByteBuffer()
-                    var errorBody = Data()
-                    var statusCode = 0
-                    var metadata = preparedRequest.metadata
+                    try await withTaskCancellationHandler {
+                        var streamState = ProviderStreamNormalizationState()
+                        var sseBuffer = SSEByteBuffer()
+                        var errorBody = Data()
+                        var statusCode = 0
+                        var metadata = preparedRequest.metadata
 
-                    for try await event in stream {
-                        try Task.checkCancellation()
-                        switch event {
-                        case .response(let response):
-                            statusCode = response.statusCode
-                            metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: response))
-                        case .data(let data):
-                            if !(200...299).contains(statusCode) {
-                                errorBody.append(data)
-                                continue
-                            }
-                            if try processSSEBytes(
-                                data,
-                                buffer: &sseBuffer,
-                                statusCode: statusCode,
-                                metadata: metadata,
-                                family: preparedRequest.family,
-                                state: &streamState,
-                                continuation: continuation
-                            ) {
-                                return
+                        for try await event in stream {
+                            try Task.checkCancellation()
+                            switch event {
+                            case .response(let response):
+                                statusCode = response.statusCode
+                                metadata = metadata.withRequestID(ProviderResponseNormalizer.requestID(from: response))
+                            case .data(let data):
+                                if !(200...299).contains(statusCode) {
+                                    errorBody.append(data)
+                                    continue
+                                }
+                                if try processSSEBytes(
+                                    data,
+                                    buffer: &sseBuffer,
+                                    statusCode: statusCode,
+                                    metadata: metadata,
+                                    family: preparedRequest.family,
+                                    state: &streamState,
+                                    continuation: continuation
+                                ) {
+                                    return
+                                }
                             }
                         }
-                    }
 
-                    try Task.checkCancellation()
-                    guard (200...299).contains(statusCode) else {
-                        let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
-                        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                        try Task.checkCancellation()
+                        guard (200...299).contains(statusCode) else {
+                            let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
+                            throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                        }
+                        try processSSEBytes(
+                            Data(),
+                            buffer: &sseBuffer,
+                            statusCode: statusCode,
+                            metadata: metadata,
+                            family: preparedRequest.family,
+                            state: &streamState,
+                            continuation: continuation,
+                            finalize: true
+                        )
+                    } onCancel: {
+                        session.invalidateAndCancel()
                     }
-                    try processSSEBytes(
-                        Data(),
-                        buffer: &sseBuffer,
-                        statusCode: statusCode,
-                        metadata: metadata,
-                        family: preparedRequest.family,
-                        state: &streamState,
-                        continuation: continuation,
-                        finalize: true
-                    )
-                } onCancel: {
-                    session.invalidateAndCancel()
+                    continuation.finish()
                 }
-                continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
             }

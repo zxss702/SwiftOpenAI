@@ -27,5 +27,13 @@ final class OpenAIErrorTests: XCTestCase {
             OpenAIError.requestBodyTooLarge("big").errorDescription,
             "请求体过大: big"
         )
+        XCTAssertEqual(
+            OpenAIError.connectionIdleTimeout.errorDescription,
+            "连接空闲超时: 长时间没有数据传输"
+        )
+        XCTAssertEqual(
+            OpenAIError.networkConnectionLost.errorDescription,
+            "网络连接已断开"
+        )
     }
 }

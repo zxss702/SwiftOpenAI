@@ -74,17 +74,19 @@ nonisolated func executeAnthropicStream(
     preparedRequest: PreparedAnthropicRequest,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
-#if !os(Windows)
-    try await executeAnthropicStreamWithHTTPClient(
-        preparedRequest: preparedRequest,
-        action: action
-    )
-#else
-    try await executeAnthropicStreamWithURLSession(
-        preparedRequest: preparedRequest,
-        action: action
-    )
-#endif
+    try await withNetworkPathGuard {
+        #if !os(Windows)
+        try await executeAnthropicStreamWithHTTPClient(
+            preparedRequest: preparedRequest,
+            action: action
+        )
+        #else
+        try await executeAnthropicStreamWithURLSession(
+            preparedRequest: preparedRequest,
+            action: action
+        )
+        #endif
+    }
 }
 
 #if !os(Windows)
@@ -95,7 +97,7 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
 ) async throws -> OpenAIChatResult {
     let request = try makeAnthropicHTTPClientRequest(from: preparedRequest.urlRequest)
     let actorHelper = OpenAISendMessageValueHelper()
-    let response = try await openAIHTTPClient.execute(request, deadline: .distantFuture)
+    let response = try await executeHTTPClientWithRetry(request)
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await anthropicBodyString(from: response.body)

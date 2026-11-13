@@ -316,6 +316,12 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
     /// 请求体超过厂商字节上限（如 DeepSeek 48 MiB）
     case requestBodyTooLarge(String)
 
+    /// 连接空闲超时：超过设定时长没有任何字节往来（见 ``openAINetworkIdleTimeout``）
+    case connectionIdleTimeout
+
+    /// 网络连接丢失：发起前或进行中检测到网络路径失效（如 Wi-Fi 断开）
+    case networkConnectionLost
+
     /// 错误的本地化描述
     public var errorDescription: String? {
         switch self {
@@ -339,6 +345,10 @@ public nonisolated enum OpenAIError: Error, LocalizedError {
             return "参数组合不支持: \(message)"
         case .requestBodyTooLarge(let message):
             return "请求体过大: \(message)"
+        case .connectionIdleTimeout:
+            return "连接空闲超时: 长时间没有数据传输"
+        case .networkConnectionLost:
+            return "网络连接已断开"
         }
     }
 }

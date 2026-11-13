@@ -65,14 +65,20 @@ nonisolated func uploadDashScopeTemporaryFile(
     }
 
     var policyRequest = URLRequest(url: policyURL)
-    policyRequest.timeoutInterval = openAIURLSessionTimeout
+    policyRequest.timeoutInterval = openAIURLRequestTimeout
     policyRequest.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
     policyRequest.setValue(OpenAIConfiguration.defaultUserAgent, forHTTPHeaderField: "User-Agent")
     for (key, value) in extraHeaders ?? [:] {
         policyRequest.setValue(value, forHTTPHeaderField: key)
     }
 
-    let (policyData, policyResponse) = try await session.data(for: policyRequest)
+    let policyData: Data
+    let policyResponse: URLResponse
+    do {
+        (policyData, policyResponse) = try await session.data(for: policyRequest)
+    } catch {
+        throw mapURLSessionTransportError(error)
+    }
     let policyStatus = (policyResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(policyStatus) else {
         let text = String(data: policyData, encoding: .utf8) ?? ""
@@ -119,11 +125,17 @@ nonisolated func uploadDashScopeTemporaryFile(
 
     var uploadRequest = URLRequest(url: uploadHost)
     uploadRequest.httpMethod = "POST"
-    uploadRequest.timeoutInterval = openAIURLSessionTimeout
+    uploadRequest.timeoutInterval = openAIURLRequestTimeout
     uploadRequest.httpBody = body
     uploadRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-    let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
+    let uploadData: Data
+    let uploadResponse: URLResponse
+    do {
+        (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
+    } catch {
+        throw mapURLSessionTransportError(error)
+    }
     let uploadStatus = (uploadResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(uploadStatus) else {
         let text = String(data: uploadData, encoding: .utf8) ?? ""
