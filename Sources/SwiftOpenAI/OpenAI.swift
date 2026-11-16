@@ -485,7 +485,14 @@ nonisolated private func processSSELine(
         continuation.yield(ChatStreamEnvelope(result: normalizedChunk, metadata: metadata))
         return false
     } catch {
-        return false
+        // 网关 error 事件（data: {"error": ...}）缺少 chunk 必填字段，须透出服务端错误而非丢弃
+        if let json = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any],
+           json["error"] != nil {
+            let errorObject = json["error"] as? [String: Any]
+            let message = (errorObject?["message"] as? String) ?? dataString
+            throw OpenAIError.invalidResponse(message, code: statusCode)
+        }
+        throw OpenAIError.decodingError(error)
     }
 }
 
