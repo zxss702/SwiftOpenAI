@@ -34,6 +34,7 @@ let package = Package(
             name: "SwiftOpenAI",
             dependencies: [
                 "SwiftOpenAIMacros",
+                .target(name: "CWinHTTP", condition: .when(platforms: [.windows])),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "_CryptoExtras", package: "swift-crypto")
             ] + {
@@ -48,6 +49,7 @@ let package = Package(
                 #endif
             }()
         ),
+        .systemLibrary(name: "CWinHTTP"),
         .macro(
             name: "SwiftOpenAIMacros",
             dependencies: [

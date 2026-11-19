@@ -78,13 +78,7 @@ nonisolated public func uploadOpenAIFile(
         request.setValue(value, forHTTPHeaderField: key)
     }
 
-    let data: Data
-    let response: URLResponse
-    do {
-        (data, response) = try await openAIURLSession.data(for: request)
-    } catch {
-        throw mapURLSessionTransportError(error)
-    }
+    let (data, response) = try await openAIHTTPData(for: request)
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(status) else {
         let text = String(data: data, encoding: .utf8) ?? ""
@@ -123,13 +117,7 @@ nonisolated public func deleteOpenAIFile(
         request.setValue(value, forHTTPHeaderField: key)
     }
 
-    let data: Data
-    let response: URLResponse
-    do {
-        (data, response) = try await openAIURLSession.data(for: request)
-    } catch {
-        throw mapURLSessionTransportError(error)
-    }
+    let (data, response) = try await openAIHTTPData(for: request)
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(status) else {
         let text = String(data: data, encoding: .utf8) ?? ""

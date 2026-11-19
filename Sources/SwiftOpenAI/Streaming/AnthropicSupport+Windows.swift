@@ -10,8 +10,8 @@ nonisolated func executeAnthropicStreamWithURLSession(
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
 ) async throws -> OpenAIChatResult {
     try Task.checkCancellation()
-    let (session, stream) = makeURLSessionStream(for: preparedRequest.urlRequest)
-    defer { session.invalidateAndCancel() }
+    let (transfer, stream) = makeWindowsHTTPStream(for: preparedRequest.urlRequest)
+    defer { transfer.cancel() }
 
     return try await withTaskCancellationHandler {
         let actorHelper = OpenAISendMessageValueHelper()
@@ -52,10 +52,10 @@ nonisolated func executeAnthropicStreamWithURLSession(
         }
 
         try Task.checkCancellation()
-        session.invalidateAndCancel()
+        transfer.cancel()
         guard (200...299).contains(statusCode) else {
             let text = String(data: responseBody, encoding: .utf8) ?? "无法解析响应内容（非UTF-8）"
-            throw mapDeepSeekBodyLimitError(message: text, code: statusCode)
+            throw mapModelHTTPError(message: text, code: statusCode, requestID: metadata.requestID)
         }
         try await processAnthropicSSEBytes(
             Data(),
@@ -88,7 +88,7 @@ nonisolated func executeAnthropicStreamWithURLSession(
             )
         )
     } onCancel: {
-        session.invalidateAndCancel()
+        transfer.cancel()
     }
 }
 

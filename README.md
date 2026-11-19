@@ -299,8 +299,8 @@ Minimum Apple platform versions: macOS 14, iOS 17, Mac Catalyst 17, and visionOS
 | Platform | Conversation Requests and Streaming |
 | --- | --- |
 | Apple platforms, Linux, and other non-Windows platforms | Use AsyncHTTPClient / SwiftNIO to receive streaming responses. |
-| Windows | Uses a URLSession delegate to receive data incrementally, with true streaming callbacks. |
-| Files uploads / deletions on all platforms | Use URLSession. |
+| Windows | Uses the system WinHTTP library for conversation requests, streaming, and file transfers. |
+| File uploads and deletions on other platforms | Use URLSession. |
 
 The public API is the same across platforms, so there is no need to switch conversation APIs. Linux / Windows builds also depend on platform support in the Swift toolchain and dependencies you use.
 

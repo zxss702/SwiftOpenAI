@@ -50,7 +50,7 @@ nonisolated func uploadDashScopeTemporaryFile(
     fileData: Data,
     filename: String,
     extraHeaders: [String: String]? = nil,
-    session: URLSession = openAIURLSession
+    session: URLSession? = nil
 ) async throws -> DashScopeTemporaryFile {
     guard var components = URLComponents(url: try APIBaseURL.parse(baseURL), resolvingAgainstBaseURL: false) else {
         throw OpenAIError.invalidURL
@@ -72,13 +72,7 @@ nonisolated func uploadDashScopeTemporaryFile(
         policyRequest.setValue(value, forHTTPHeaderField: key)
     }
 
-    let policyData: Data
-    let policyResponse: URLResponse
-    do {
-        (policyData, policyResponse) = try await session.data(for: policyRequest)
-    } catch {
-        throw mapURLSessionTransportError(error)
-    }
+    let (policyData, policyResponse) = try await openAIHTTPData(for: policyRequest, session: session)
     let policyStatus = (policyResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(policyStatus) else {
         let text = String(data: policyData, encoding: .utf8) ?? ""
@@ -129,13 +123,7 @@ nonisolated func uploadDashScopeTemporaryFile(
     uploadRequest.httpBody = body
     uploadRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-    let uploadData: Data
-    let uploadResponse: URLResponse
-    do {
-        (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
-    } catch {
-        throw mapURLSessionTransportError(error)
-    }
+    let (uploadData, uploadResponse) = try await openAIHTTPData(for: uploadRequest, session: session)
     let uploadStatus = (uploadResponse as? HTTPURLResponse)?.statusCode ?? 0
     guard (200...299).contains(uploadStatus) else {
         let text = String(data: uploadData, encoding: .utf8) ?? ""

@@ -112,9 +112,10 @@ private nonisolated func executeResponsesStreamWithHTTPClient(
             throw codexHTTPError(body: responseBody, status: Int(response.status.code),
                 requestID: ProviderResponseNormalizer.requestID(from: response.headers))
         }
-        throw mapDeepSeekBodyLimitError(
+        throw mapModelHTTPError(
             message: responseBody,
-            code: Int(response.status.code)
+            code: Int(response.status.code),
+            requestID: ProviderResponseNormalizer.requestID(from: response.headers)
         )
     }
 
