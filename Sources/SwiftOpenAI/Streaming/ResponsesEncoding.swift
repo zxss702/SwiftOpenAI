@@ -16,6 +16,10 @@ struct PreparedResponsesRequest: Sendable {
     let metadata: ChatResponseMetadata
     let fileBindings: [String: FileBinding]
 
+    nonisolated var codexSessionID: String? {
+        guard metadata.providerName == "openai-codex" else { return nil }
+        return urlRequest.value(forHTTPHeaderField: "session-id")
+    }
 }
 
 nonisolated func validateResponsesParameters(
@@ -92,6 +96,16 @@ nonisolated func makeResponsesURLRequest(
     }
     for (key, value) in config.defaultHeaders {
         request.setValue(value, forHTTPHeaderField: key)
+    }
+    if config.providerName == "openai-codex",
+       request.value(forHTTPHeaderField: "session-id")?.isEmpty != false {
+        let previousSessionID = messages.reversed().lazy.compactMap { message -> String? in
+            guard case .assistant(let assistant) = message,
+                  let sessionID = assistant.contentBlocks?.codexSessionID,
+                  !sessionID.isEmpty else { return nil }
+            return sessionID
+        }.first
+        request.setValue(previousSessionID ?? UUID().uuidString, forHTTPHeaderField: "session-id")
     }
     return PreparedResponsesRequest(
         urlRequest: request,

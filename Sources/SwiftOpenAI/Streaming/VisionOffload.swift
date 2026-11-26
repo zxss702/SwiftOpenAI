@@ -370,16 +370,19 @@ private nonisolated func decodeDataURL(_ url: String) -> DecodedDataURLPayload? 
 nonisolated func mergeContentBlocksForResult(
     anthropic: [[String: AnyCodableValue]]?,
     fileBindings: [String: FileBinding],
-    responses: ResponsesMessageContext? = nil
+    responses: ResponsesMessageContext? = nil,
+    codexSessionID: String? = nil
 ) -> MessageContentBlocks? {
     if (anthropic == nil || anthropic?.isEmpty == true)
         && fileBindings.isEmpty
-        && responses == nil {
+        && responses == nil
+        && codexSessionID == nil {
         return nil
     }
     return MessageContentBlocks(
         anthropic: (anthropic?.isEmpty == false) ? anthropic : nil,
         fileBindings: fileBindings.isEmpty ? nil : fileBindings,
-        responses: responses
+        responses: responses,
+        codexSessionID: codexSessionID
     )
 }

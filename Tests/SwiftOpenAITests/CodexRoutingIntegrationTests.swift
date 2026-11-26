@@ -27,7 +27,7 @@ private final class RoutingMessageHistory {
 
 final class CodexRoutingIntegrationTests: XCTestCase {
     @MainActor
-    func testSIWCToolHistorySurvivesSwiftDataWithoutBackendRouting() async throws {
+    func testSIWCSessionIDSurvivesSwiftDataAndToolContinuation() async throws {
         let output: [[String: Any]] = [[
             "type": "function_call", "id": "fc_1", "call_id": "call_1",
             "name": "message_user", "arguments": #"{"content":"你好","name":"打招呼"}"#,
@@ -43,6 +43,7 @@ final class CodexRoutingIntegrationTests: XCTestCase {
         let first = try prepare(port: port, messages: initial)
         let result = try await executeResponsesStream(preparedRequest: first) { _ in }
         let blocks = try XCTUnwrap(result.contentBlocks)
+        let sessionID = try XCTUnwrap(blocks.codexSessionID)
         let reply = OpenAIMessage.assistant(
             result.fullText,
             toolCalls: result.allToolCalls.map {
@@ -76,14 +77,28 @@ final class CodexRoutingIntegrationTests: XCTestCase {
             restored.append(try JSONDecoder().decode(OpenAIMessage.self, from: row.payload))
         }
         let second = try prepare(port: port, messages: restored)
-        _ = try await executeResponsesStream(preparedRequest: second) { _ in }
+        let continuation = try await executeResponsesStream(preparedRequest: second) { _ in }
+        XCTAssertEqual(continuation.contentBlocks?.codexSessionID, sessionID)
         let requests = server.requests
         XCTAssertEqual(requests.count, 2)
         guard requests.count == 2 else { return }
-        XCTAssertNil(requests[0]["session-id"])
-        XCTAssertNil(requests[1]["session-id"])
+        XCTAssertEqual(requests[0]["session-id"], sessionID)
+        XCTAssertEqual(requests[1]["session-id"], sessionID)
         XCTAssertNil(requests[0]["x-codex-turn-state"])
         XCTAssertNil(requests[1]["x-codex-turn-state"])
+    }
+
+    func testSIWCEmptyCompletedOutputStillCarriesSessionID() async throws {
+        let sse = try TestFixtures.makeSSELine([
+            "type": "response.completed", "response": ["id": "resp_empty", "output": []]
+        ]) + "\n\n"
+        let server = try RoutingHTTPServer(sse: sse)
+        let port = try await server.start()
+        defer { server.stop() }
+        let request = try prepare(port: port, messages: [.user("hello")])
+        let result = try await executeResponsesStream(preparedRequest: request) { _ in }
+        let sessionID = try XCTUnwrap(request.codexSessionID)
+        XCTAssertEqual(result.contentBlocks?.codexSessionID, sessionID)
     }
 
     func testSIWCRejectsDONEAndInterruptedStreamsWithoutCompletedEvent() async throws {
