@@ -325,7 +325,7 @@ Unknown domains and proxy URLs use generic compatibility rules. The library does
 | Codex | Enforces SIWC preview constraints, including `store: false`, `stream: true`, stateless HTTP history and supported fields. Local function tools are supplied through `additional_tools` input items. |
 | Anthropic | Does not support `prediction`, `user`, `n != 1`, frequency / presence penalties, or `responseFormat`. When reasoning is enabled, required tool use or a specific function choice is changed to `auto`. |
 
-Use the unified `thinkLevel` parameter to choose reasoning intensity, such as `.high`. To disable reasoning, pass `ThinkLevel.none` explicitly; Swift interprets `.none` alone as the optional value `nil`. Supported levels depend on the service and model.
+Pass a `Double` from `0` through `1` as `thinkLevel` (for example, `0.6`). Use `nil` to leave model defaults and explicit `extraBody` settings intact. `0` turns off reasoning where the selected model supports it; otherwise it uses the lowest supported level. Positive values map into equal intervals across the supported levels.
 
 Add provider-specific request parameters through `extraBody` and custom request headers through `extraHeaders`. The Codex field-removal rules above also apply to `extraBody`.
 
