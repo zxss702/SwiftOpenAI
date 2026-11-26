@@ -17,6 +17,7 @@ enum ProviderFamily: String, Sendable {
     case genericOpenAICompatible
     case tokenDance
     case deepseek
+    case xai
 
     var providerName: String {
         switch self {
@@ -38,6 +39,8 @@ enum ProviderFamily: String, Sendable {
             return "tokendance"
         case .deepseek:
             return "deepseek"
+        case .xai:
+            return "xai"
         }
     }
 
@@ -45,7 +48,7 @@ enum ProviderFamily: String, Sendable {
         switch self {
         case .minimax:
             return .reasoningDetails
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .moonshot, .deepseek:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .moonshot, .deepseek, .xai:
             return .reasoningContent
         }
     }
@@ -55,7 +58,7 @@ enum ProviderFamily: String, Sendable {
     /// 不支持的 Provider 即使工具声明了 strict 也会在发送时剥除该字段。
     var supportsToolStrict: Bool {
         switch self {
-        case .openai, .moonshot, .deepseek:
+        case .openai, .moonshot, .deepseek, .xai:
             return true
         case .zhipuGLM, .minimax, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance:
             return false
@@ -69,7 +72,7 @@ enum ProviderFamily: String, Sendable {
             return .latestReminder
         case .moonshot, .openai, .tokenDance:
             return .system
-        case .dashscope, .volcengineArk, .zhipuGLM, .minimax, .genericOpenAICompatible:
+        case .dashscope, .volcengineArk, .zhipuGLM, .minimax, .genericOpenAICompatible, .xai:
             return .user
         }
     }
@@ -80,7 +83,7 @@ enum ProviderFamily: String, Sendable {
     /// `json_schema` → `json_object` → 去掉 `response_format`。
     var responseFormatCapability: ResponseFormatCapability {
         switch self {
-        case .openai, .moonshot, .volcengineArk, .dashscope:
+        case .openai, .moonshot, .volcengineArk, .dashscope, .xai:
             return .jsonSchema
         case .deepseek, .zhipuGLM, .genericOpenAICompatible, .tokenDance:
             return .jsonObject
@@ -162,7 +165,7 @@ struct CanonicalChatRequest: Sendable {
     let topP: Double?
     let user: String?
     let stream: Bool?
-    let thinkLevel: ThinkLevel?
+    let thinkLevel: Double?
     let mergedExtraBody: [String: AnyCodableValue]
 }
 
@@ -183,11 +186,12 @@ enum ProviderFamilyResolver {
         }
         if normalizedHost == "api.minimax.io"
             || normalizedHost == "api.minimaxi.com"
+            || normalizedHost == "api.minimax.cn"
             || normalizedHost.hasSuffix(".minimax.io")
             || normalizedHost.hasSuffix(".minimaxi.com") {
             return .minimax
         }
-        if normalizedHost == "open.bigmodel.cn" || normalizedHost.hasSuffix(".bigmodel.cn") {
+        if normalizedHost == "api.z.ai" || normalizedHost.hasSuffix(".bigmodel.cn") {
             return .zhipuGLM
         }
         if normalizedHost == "dashscope.aliyuncs.com"
@@ -201,7 +205,10 @@ enum ProviderFamilyResolver {
         if normalizedHost.hasSuffix(".volces.com") {
             return .volcengineArk
         }
-        if normalizedHost.contains("deepseek.com") {
+        if normalizedHost == "api.x.ai" {
+            return .xai
+        }
+        if normalizedHost == "deepseek.com" || normalizedHost.hasSuffix(".deepseek.com") {
             return .deepseek
         }
         if normalizedHost == "tokendance.space" || normalizedHost.hasSuffix(".tokendance.space") {
@@ -239,7 +246,7 @@ enum ProviderCompatibilityValidator {
                 throw OpenAIError.unsupportedParameterCombination("Moonshot 思考模型暂不支持 tools")
             }
             // Moonshot thinking 模型的 response_format 由 normalizeResponseFormat 剥离，不再硬抛错
-        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
+        case .openai, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek, .xai:
             break
         }
     }
@@ -342,10 +349,9 @@ enum ProviderRequestEncoder {
             body["frequency_penalty"] = frequencyPenalty
         }
         if let maxCompletionTokens = request.maxCompletionTokens {
-            switch family {
-            case .openai:
+            if family == .openai || MultimediaCapabilityResolver.isMiniMaxM3(request.model) {
                 body["max_completion_tokens"] = maxCompletionTokens
-            case .moonshot, .minimax, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
+            } else {
                 body["max_tokens"] = maxCompletionTokens
             }
         }
@@ -406,7 +412,10 @@ enum ProviderRequestEncoder {
             wireAPI: .completions,
             model: model
         )
-        return try messages.map { try encodeMessage($0, family: family, capability: capability) }
+        let miniMaxMedia = MultimediaCapabilityResolver.isMiniMaxM3(model)
+        return try messages.map {
+            try encodeMessage($0, family: family, capability: capability, miniMaxMedia: miniMaxMedia)
+        }
     }
 
     private static func encodeImageURLPart(url: String, detail: String) -> [String: Any] {
@@ -755,50 +764,6 @@ enum ProviderRequestEncoder {
         }
     }
 
-    private static func applyThinking(
-        into body: inout [String: Any],
-        thinkLevel: ThinkLevel?,
-        family: ProviderFamily
-    ) {
-        switch family {
-        case .minimax:
-            body["reasoning_split"] = true
-            guard let thinkLevel else { return }
-            body["thinking"] = [
-                "type": thinkLevel.enablesReasoning ? "adaptive" : "disabled"
-            ]
-
-        case .zhipuGLM, .volcengineArk:
-            guard let thinkLevel else { return }
-            body["thinking"] = [
-                "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
-            ]
-            if thinkLevel.enablesReasoning {
-                body["reasoning_effort"] = thinkLevel.rawValue
-            }
-
-        case .deepseek, .genericOpenAICompatible, .tokenDance:
-            guard let thinkLevel else { return }
-            body["thinking"] = [
-                "type": thinkLevel.enablesReasoning ? "enabled" : "disabled"
-            ]
-            if thinkLevel.enablesReasoning {
-                body["reasoning_effort"] = thinkLevel.rawValue
-            }
-
-        case .dashscope:
-            guard let thinkLevel else { return }
-            body["enable_thinking"] = thinkLevel.enablesReasoning
-
-        case .openai:
-            guard let thinkLevel else { return }
-            body["reasoning_effort"] = thinkLevel.rawValue
-
-        case .moonshot:
-            break
-        }
-    }
-
     private static func mergeExtraBody(
         _ configurationExtraBody: [String: AnyCodableValue]?,
         _ queryExtraBody: [String: AnyCodableValue]?
@@ -828,7 +793,7 @@ enum ProviderRequestEncoder {
         switch family {
         case .minimax:
             break
-        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek:
+        case .openai, .moonshot, .zhipuGLM, .volcengineArk, .dashscope, .genericOpenAICompatible, .tokenDance, .deepseek, .xai:
             break
         }
     }

@@ -63,9 +63,4 @@ final class AIModelInfoTests: XCTestCase {
         XCTAssertFalse(info.isCodex)
     }
 
-    func testThinkLevelEnablesReasoning() {
-        XCTAssertFalse(ThinkLevel.none.enablesReasoning)
-        XCTAssertTrue(ThinkLevel.high.enablesReasoning)
-        XCTAssertTrue(ThinkLevel.max.enablesReasoning)
-    }
 }

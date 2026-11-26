@@ -24,7 +24,7 @@ nonisolated func sendResponsesMessage(
     tools: [ChatQuery.ChatCompletionToolParam]? = nil,
     topP: Double? = nil,
     user: String? = nil,
-    thinkLevel: ThinkLevel? = nil,
+    thinkLevel: Double? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void

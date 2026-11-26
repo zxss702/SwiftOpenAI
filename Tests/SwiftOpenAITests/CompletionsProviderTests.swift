@@ -34,7 +34,7 @@ final class CompletionsProviderTests: XCTestCase {
                 messages: [.user("hello")],
                 model: "gpt-5",
                 maxCompletionTokens: 256,
-                thinkLevel: .high
+                thinkLevel: 0.8
             ),
             configuration: TestFixtures.configuration(baseURL: "https://api.openai.com/v1")
         )
@@ -54,7 +54,7 @@ final class CompletionsProviderTests: XCTestCase {
                 ],
                 model: "MiniMax-M2.7",
                 maxCompletionTokens: 128,
-                thinkLevel: .high
+                thinkLevel: 0.8
             ),
             configuration: TestFixtures.configuration(baseURL: "https://api.minimaxi.com/v1")
         )
@@ -62,8 +62,7 @@ final class CompletionsProviderTests: XCTestCase {
         XCTAssertEqual(body["max_tokens"] as? Int, 128)
         XCTAssertNil(body["max_completion_tokens"])
         XCTAssertEqual(body["reasoning_split"] as? Bool, true)
-        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
-        XCTAssertEqual(thinking["type"] as? String, "adaptive")
+        XCTAssertNil(body["thinking"])
 
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         let assistant = try XCTUnwrap(messages.first)
@@ -72,15 +71,14 @@ final class CompletionsProviderTests: XCTestCase {
         XCTAssertEqual(details.first?["text"] as? String, "think-first")
     }
 
-    func testMiniMaxThinkLevelNoneDisablesThinkingButKeepsSplit() async throws {
+    func testMiniMaxLegacyDoesNotSendAThinkingSwitch() async throws {
         let prepared = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "MiniMax-M2.7", thinkLevel: ThinkLevel.none),
+            query: ChatQuery(messages: [.user("hello")], model: "MiniMax-M2.7", thinkLevel: 0),
             configuration: TestFixtures.configuration(baseURL: "https://api.minimax.io/v1")
         )
         let body = try TestFixtures.requestBody(from: prepared.urlRequest)
         XCTAssertEqual(body["reasoning_split"] as? Bool, true)
-        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
-        XCTAssertEqual(thinking["type"] as? String, "disabled")
+        XCTAssertNil(body["thinking"])
     }
 
     func testStreamingDefaultsIncludeUsage() async throws {
@@ -113,30 +111,30 @@ final class CompletionsProviderTests: XCTestCase {
 
     func testThinkLevelMappingsForGLMDashScopeDeepSeekAndGeneric() async throws {
         let glm = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", thinkLevel: .high),
+            query: ChatQuery(messages: [.user("hello")], model: "glm-4.5", thinkLevel: 0.8),
             configuration: TestFixtures.configuration(baseURL: "https://open.bigmodel.cn/api/paas/v4")
         )
         let glmBody = try TestFixtures.requestBody(from: glm.urlRequest)
         XCTAssertEqual((glmBody["thinking"] as? [String: Any])?["type"] as? String, "enabled")
-        XCTAssertEqual(glmBody["reasoning_effort"] as? String, "high")
+        XCTAssertNil(glmBody["reasoning_effort"])
 
         let dash = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "qwen-plus", thinkLevel: .medium),
+            query: ChatQuery(messages: [.user("hello")], model: "qwen-plus", thinkLevel: 0.4),
             configuration: TestFixtures.configuration(baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1")
         )
         let dashBody = try TestFixtures.requestBody(from: dash.urlRequest)
         XCTAssertEqual(dashBody["enable_thinking"] as? Bool, true)
 
         let deepseek = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: .xhigh),
+            query: ChatQuery(messages: [.user("hello")], model: "deepseek-v4-pro", thinkLevel: 0.8),
             configuration: TestFixtures.configuration(baseURL: "https://api.deepseek.com/v1")
         )
         let deepseekBody = try TestFixtures.requestBody(from: deepseek.urlRequest)
         XCTAssertEqual((deepseekBody["thinking"] as? [String: Any])?["type"] as? String, "enabled")
-        XCTAssertEqual(deepseekBody["reasoning_effort"] as? String, "xhigh")
+        XCTAssertEqual(deepseekBody["reasoning_effort"] as? String, "max")
 
         let generic = try await createChatRequest(
-            query: ChatQuery(messages: [.user("hello")], model: "custom", thinkLevel: .max),
+            query: ChatQuery(messages: [.user("hello")], model: "custom", thinkLevel: 1),
             configuration: TestFixtures.configuration(baseURL: "https://api.siliconflow.cn/v1")
         )
         let genericBody = try TestFixtures.requestBody(from: generic.urlRequest)

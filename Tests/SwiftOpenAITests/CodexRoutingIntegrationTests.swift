@@ -110,7 +110,7 @@ final class CodexRoutingIntegrationTests: XCTestCase {
             ),
             messages: messages, frequencyPenalty: nil, maxCompletionTokens: nil, parallelToolCalls: true,
             presencePenalty: nil, responseFormat: nil, stop: nil, temperature: nil, toolChoice: nil,
-            tools: nil, topP: nil, thinkLevel: ThinkLevel.none, extraBody: nil, extraHeaders: nil
+            tools: nil, topP: nil, thinkLevel: 0, extraBody: nil, extraHeaders: nil
         )
     }
 }

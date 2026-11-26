@@ -21,7 +21,7 @@ import Foundation
 ///   - topP: nucleus sampling 参数
 ///   - user: 终端用户标识符
 ///   - stream: 是否使用流式传输，默认为 true
-///   - thinkLevel: 统一思考强度（none 关闭，其余为等级），按厂商自动映射
+///   - thinkLevel: 统一思考强度 0…1；nil 保持默认，0 尽可能关闭，其余按模型能力映射
 ///   - extraBody: 额外的请求体参数
 ///   - extraHeaders: 额外的 HTTP 请求头
 ///   - action: 流式结果回调闭包
@@ -58,7 +58,7 @@ nonisolated public func sendMessage(
     topP: Double? = nil,
     user: String? = nil,
     stream: Bool = true,
-    thinkLevel: ThinkLevel? = nil,
+    thinkLevel: Double? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -175,7 +175,7 @@ nonisolated public func sendMessageSync(
     tools: [any OpenAIToolConvertible]? = nil,
     topP: Double? = nil,
     user: String? = nil,
-    thinkLevel: ThinkLevel? = nil,
+    thinkLevel: Double? = nil,
     extraBody: [String: AnyCodableValue]? = nil,
     extraHeaders: [String: String]? = nil
 ) async throws -> OpenAIChatResult {

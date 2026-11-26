@@ -44,7 +44,8 @@ public struct ChatQuery: Codable, Sendable {
     public let topP: Double?
     public let user: String?
     public let stream: Bool?
-    public let thinkLevel: ThinkLevel?
+    /// 思考强度 0…1。nil 不覆盖模型默认；0 在支持关闭时关闭。
+    public let thinkLevel: Double?
     public let extraBody: [String: AnyCodableValue]?
     
     public init(
@@ -64,7 +65,7 @@ public struct ChatQuery: Codable, Sendable {
         topP: Double? = nil,
         user: String? = nil,
         stream: Bool? = nil,
-        thinkLevel: ThinkLevel? = nil,
+        thinkLevel: Double? = nil,
         extraBody: [String: AnyCodableValue]? = nil
     ) {
         self.messages = messages

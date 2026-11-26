@@ -92,7 +92,7 @@ final class ResponsesEncodingTests: XCTestCase {
             toolChoice: .required,
             tools: [tool],
             topP: 0.9,
-            thinkLevel: .high,
+            thinkLevel: 0.6,
             extraBody: ["metadata": .object(["source": .string("unit-test")])]
         )
 
@@ -203,7 +203,7 @@ final class ResponsesEncodingTests: XCTestCase {
             toolChoice: nil,
             tools: nil,
             topP: nil,
-            thinkLevel: .medium,
+            thinkLevel: 0.4,
             extraBody: nil
         )
         XCTAssertNil(body["instructions"])

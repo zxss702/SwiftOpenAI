@@ -48,7 +48,7 @@ nonisolated func makeResponsesURLRequest(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?,
     fileBindings: [String: FileBinding] = [:]
@@ -118,7 +118,7 @@ nonisolated func makeResponsesRequestBody(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     baseURL: String? = nil,
     wireAPI: AIModelWireAPI = .responses
@@ -167,16 +167,14 @@ nonisolated func makeResponsesRequestBody(
     if let textControls = try encodeResponsesTextControls(responseFormat) {
         body["text"] = textControls
     }
-    if let reasoning = encodeResponsesReasoning(thinkLevel: thinkLevel) {
-        body["reasoning"] = reasoning
-    }
     if wireAPI == .codexResponses || family == .openai {
         body["include"] = ["reasoning.encrypted_content"]
     }
-
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
     }
+    ReasoningCapability.resolve(model: modelID, family: family, wireAPI: wireAPI)
+        .apply(to: &body, ratio: thinkLevel, wireAPI: wireAPI)
     if wireAPI == .codexResponses {
         // These constraints belong only to SIWC, never to ordinary Responses clients.
         for key in ["background", "conversation", "max_output_tokens", "max_tool_calls", "metadata",
@@ -230,7 +228,7 @@ nonisolated func makeCodexResponsesRequestBody(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?
 ) throws -> [String: Any] {
     try makeResponsesRequestBody(
@@ -498,18 +496,6 @@ private nonisolated func encodeResponsesToolChoice(
             "name": name
         ]
     }
-}
-
-private nonisolated func encodeResponsesReasoning(
-    thinkLevel: ThinkLevel?
-) -> [String: Any]? {
-    guard let thinkLevel else {
-        return nil
-    }
-    return [
-        "effort": thinkLevel.rawValue,
-        "summary": "auto"
-    ]
 }
 
 private nonisolated func encodeResponsesTextControls(

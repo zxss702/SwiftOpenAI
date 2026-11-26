@@ -94,7 +94,7 @@ final class AnthropicEncodingTests: XCTestCase {
             toolChoice: .required,
             tools: [tool],
             topP: 0.9,
-            thinkLevel: .medium,
+            thinkLevel: 0.4,
             extraBody: ["metadata": .object(["source": .string("unit-test")])]
         )
 
@@ -141,7 +141,7 @@ final class AnthropicEncodingTests: XCTestCase {
             toolChoice: nil,
             tools: nil,
             topP: nil,
-            thinkLevel: ThinkLevel.none,
+            thinkLevel: 0,
             extraBody: nil
         )
         XCTAssertEqual((body["thinking"] as? [String: Any])?["type"] as? String, "disabled")
@@ -159,7 +159,7 @@ final class AnthropicEncodingTests: XCTestCase {
             toolChoice: nil,
             tools: nil,
             topP: nil,
-            thinkLevel: .medium,
+            thinkLevel: 0.4,
             extraBody: nil
         )
         let budget = try XCTUnwrap((body["thinking"] as? [String: Any])?["budget_tokens"] as? Int)
@@ -204,7 +204,7 @@ final class AnthropicEncodingTests: XCTestCase {
             toolChoice: nil,
             tools: [TestFixtures.weatherTool()],
             topP: nil,
-            thinkLevel: .low,
+            thinkLevel: 0.25,
             extraBody: nil
         )
 
@@ -237,7 +237,7 @@ final class AnthropicEncodingTests: XCTestCase {
             toolChoice: nil,
             tools: nil,
             topP: nil,
-            thinkLevel: ThinkLevel.none,
+            thinkLevel: 0,
             extraBody: nil
         )
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])

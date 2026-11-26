@@ -9,27 +9,6 @@ public enum AIModelWireAPI: String, Codable, Sendable, Hashable {
     case anthropic
 }
 
-/// 统一的思考强度等级（completions / responses / Codex / Anthropic 共用）
-///
-/// - `none`：关闭思考
-/// - 其余等级：开启思考，并由 Provider 映射到对应线格式
-///
-/// 注意：参数类型为 `ThinkLevel?` 时，请写 `ThinkLevel.none`，不要写 `.none`
-///（后者会被解析为 `Optional.none`，等同于不传）。
-public enum ThinkLevel: String, Codable, Sendable, Hashable, CaseIterable {
-    case none
-    case minimal
-    case low
-    case medium
-    case high
-    case xhigh
-    case max
-
-    public var enablesReasoning: Bool {
-        self != .none
-    }
-}
-
 /// AI 模型配置信息
 ///
 /// 对外统一暴露为一个值类型，内部区分四条传输线路：

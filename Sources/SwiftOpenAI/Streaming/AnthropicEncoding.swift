@@ -47,7 +47,7 @@ nonisolated func makeAnthropicURLRequest(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?,
     fileBindings: [String: FileBinding] = [:]
@@ -111,7 +111,7 @@ nonisolated func makeAnthropicRequestBody(
     toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
     tools: [ChatQuery.ChatCompletionToolParam]?,
     topP: Double?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     baseURL: String? = nil
 ) throws -> [String: Any] {
@@ -123,16 +123,10 @@ nonisolated func makeAnthropicRequestBody(
         model: modelID
     )
     let prepared = try prepareAnthropicPrompt(messages, capability: capability)
-    let thinkingEnabled = thinkLevel != nil && thinkLevel != ThinkLevel.none
-    let (maxTokens, thinkingConfig) = resolvedAnthropicMaxTokensAndThinking(
-        maxCompletionTokens: maxCompletionTokens,
-        thinkLevel: thinkLevel
-    )
-
     var body: [String: Any] = [
         "model": modelID,
         "messages": prepared.messages,
-        "max_tokens": maxTokens,
+        "max_tokens": maxCompletionTokens ?? 4096,
         "stream": true
     ]
 
@@ -149,29 +143,26 @@ nonisolated func makeAnthropicRequestBody(
         body["stop_sequences"] = encodeAnthropicStop(stop)
     }
 
-    let effectiveToolChoice = resolveAnthropicToolChoice(
-        toolChoice,
-        thinkingEnabled: thinkingEnabled
-    )
     if let tools, !tools.isEmpty {
         body["tools"] = tools.map(encodeAnthropicTool)
-        body["tool_choice"] = encodeAnthropicToolChoice(
-            effectiveToolChoice ?? .auto,
-            disableParallelToolUse: parallelToolCalls == false
-        )
-    } else if let effectiveToolChoice {
-        body["tool_choice"] = encodeAnthropicToolChoice(
-            effectiveToolChoice,
-            disableParallelToolUse: parallelToolCalls == false
-        )
+        body["tool_choice"] = encodeAnthropicToolChoice(toolChoice ?? .auto,
+                                                        disableParallelToolUse: parallelToolCalls == false)
+    } else if let toolChoice {
+        body["tool_choice"] = encodeAnthropicToolChoice(toolChoice,
+                                                        disableParallelToolUse: parallelToolCalls == false)
     }
-    if let thinkingConfig {
-        body["thinking"] = thinkingConfig
-    }
-
     for (key, value) in extraBody ?? [:] {
         body[key] = value.anyValue
     }
+    let thinkingEnabled = ReasoningCapability.resolve(model: modelID, family: family, wireAPI: .anthropic)
+        .apply(to: &body, ratio: thinkLevel, wireAPI: .anthropic)
+    if thinkingEnabled, var choice = body["tool_choice"] as? [String: Any],
+       let type = choice["type"] as? String, type == "any" || type == "tool" {
+        choice["type"] = "auto"
+        choice.removeValue(forKey: "name")
+        body["tool_choice"] = choice
+    }
+
     return body
 }
 
@@ -484,69 +475,6 @@ private nonisolated func encodeAnthropicToolChoice(
         encoded["disable_parallel_tool_use"] = true
     }
     return encoded
-}
-
-private nonisolated func resolveAnthropicToolChoice(
-    _ toolChoice: ChatQuery.ChatCompletionFunctionCallOptionParam?,
-    thinkingEnabled: Bool
-) -> ChatQuery.ChatCompletionFunctionCallOptionParam? {
-    guard let toolChoice else { return nil }
-    guard thinkingEnabled else { return toolChoice }
-    // Manual extended thinking only supports tool_choice auto/none.
-    switch toolChoice {
-    case .required, .function:
-        return .auto
-    case .none, .auto:
-        return toolChoice
-    }
-}
-
-private nonisolated func resolvedAnthropicMaxTokensAndThinking(
-    maxCompletionTokens: Int?,
-    thinkLevel: ThinkLevel?
-) -> (maxTokens: Int, thinking: [String: Any]?) {
-    let requested = maxCompletionTokens ?? 4096
-    guard let thinkLevel else {
-        return (requested, nil)
-    }
-    if thinkLevel == .none {
-        return (requested, ["type": "disabled"])
-    }
-    // Official: budget_tokens ≥ 1024 and strictly less than max_tokens.
-    let budget = max(1024, anthropicBudgetTokens(for: thinkLevel))
-    let maxTokens = max(requested, budget + 4096)
-    return (
-        maxTokens,
-        [
-            "type": "enabled",
-            "budget_tokens": budget
-        ]
-    )
-}
-
-private nonisolated func encodeAnthropicThinking(
-    thinkLevel: ThinkLevel?
-) -> [String: Any]? {
-    resolvedAnthropicMaxTokensAndThinking(maxCompletionTokens: nil, thinkLevel: thinkLevel).thinking
-}
-
-private nonisolated func anthropicBudgetTokens(for thinkLevel: ThinkLevel) -> Int {
-    switch thinkLevel {
-    case .none:
-        return 0
-    case .minimal:
-        return 1024
-    case .low:
-        return 2048
-    case .medium:
-        return 8192
-    case .high:
-        return 16384
-    case .xhigh:
-        return 24576
-    case .max:
-        return 32000
-    }
 }
 
 private nonisolated func encodeAnthropicStop(_ stop: ChatQuery.Stop) -> [String] {

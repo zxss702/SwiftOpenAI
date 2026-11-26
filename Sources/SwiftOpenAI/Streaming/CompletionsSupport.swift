@@ -17,7 +17,7 @@ nonisolated func sendCompletionsMessage(
     topP: Double?,
     user: String?,
     stream: Bool,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?,
     action: @escaping @Sendable (OpenAIChatStreamResult) async throws -> Void
@@ -151,7 +151,7 @@ nonisolated func sendCompletionsMessageSync(
     tools: [any OpenAIToolConvertible]?,
     topP: Double?,
     user: String?,
-    thinkLevel: ThinkLevel?,
+    thinkLevel: Double?,
     extraBody: [String: AnyCodableValue]?,
     extraHeaders: [String: String]?
 ) async throws -> OpenAIChatResult {
