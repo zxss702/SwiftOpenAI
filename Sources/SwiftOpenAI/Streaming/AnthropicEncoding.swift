@@ -432,7 +432,7 @@ private nonisolated func encodeAnthropicVideo(url: String) throws -> [String: An
             "type": "video",
             "source": [
                 "type": "base64",
-                "media_type": mediaType,
+                "media_type": mediaType == "video/quicktime" ? "video/mov" : mediaType,
                 "data": data
             ] as [String: Any]
         ]

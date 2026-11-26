@@ -210,46 +210,11 @@ public struct UserMessageParam: Codable, Sendable {
                     
                     public init(videoData: Data, fps: Double? = nil) {
                         let base64String = videoData.base64EncodedString()
-                        let mimeType = Self.detectVideoMimeType(from: videoData)
+                        let mimeType = VideoInputMIME.detect(videoData)
                         self.url = "data:\(mimeType);base64,\(base64String)"
                         self.fps = fps
                     }
                     
-                    /// 检测视频 MIME 类型
-                    private static func detectVideoMimeType(from data: Data) -> String {
-                        guard data.count >= 8 else { return "video/mp4" }
-                        
-                        let bytes = [UInt8](data)
-                        
-                        // WebM/MKV: 1A 45 DF A3
-                        if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
-                            return "video/webm"
-                        }
-                        
-                        // AVI: 52 49 46 46 (RIFF)
-                        if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
-                            return "video/avi"
-                        }
-                        
-                        // WMV: 30 26 B2 75 (ASF)
-                        if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
-                            return "video/x-ms-wmv"
-                        }
-                        
-                        // MP4/MOV: 检查 offset 4-7 的 "ftyp"
-                        let ftypBytes = bytes[4..<8]
-                        if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
-                            return "video/mp4"
-                        }
-                        
-                        // 3GPP: 检查 offset 4-6 的 "3gp"
-                        let threeGpBytes = bytes[4..<7]
-                        if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
-                            return "video/3gpp"
-                        }
-                        
-                        return "video/mp4" // 默认
-                    }
                 }
             }
         }
@@ -604,46 +569,11 @@ public struct ToolMessageParam: Codable, Sendable {
                     
                     public init(videoData: Data, fps: Double? = nil) {
                         let base64String = videoData.base64EncodedString()
-                        let mimeType = Self.detectVideoMimeType(from: videoData)
+                        let mimeType = VideoInputMIME.detect(videoData)
                         self.url = "data:\(mimeType);base64,\(base64String)"
                         self.fps = fps
                     }
                     
-                    /// 检测视频 MIME 类型
-                    private static func detectVideoMimeType(from data: Data) -> String {
-                        guard data.count >= 8 else { return "video/mp4" }
-                        
-                        let bytes = [UInt8](data)
-                        
-                        // WebM/MKV: 1A 45 DF A3
-                        if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
-                            return "video/webm"
-                        }
-                        
-                        // AVI: 52 49 46 46 (RIFF)
-                        if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
-                            return "video/avi"
-                        }
-                        
-                        // WMV: 30 26 B2 75 (ASF)
-                        if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
-                            return "video/x-ms-wmv"
-                        }
-                        
-                        // MP4/MOV: 检查 offset 4-7 的 "ftyp"
-                        let ftypBytes = bytes[4..<8]
-                        if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
-                            return "video/mp4"
-                        }
-                        
-                        // 3GPP: 检查 offset 4-6 的 "3gp"
-                        let threeGpBytes = bytes[4..<7]
-                        if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
-                            return "video/3gpp"
-                        }
-                        
-                        return "video/mp4" // 默认
-                    }
                 }
             }
         }
@@ -732,44 +662,10 @@ public struct ContentPartVideoParam: Codable {
         
         public init(videoData: Data, fps: Double? = nil) {
             let base64String = videoData.base64EncodedString()
-            let mimeType = Self.detectVideoMimeType(from: videoData)
+            let mimeType = VideoInputMIME.detect(videoData)
             self.url = "data:\(mimeType);base64,\(base64String)"
             self.fps = fps
         }
         
-        private static func detectVideoMimeType(from data: Data) -> String {
-            guard data.count >= 8 else { return "video/mp4" }
-            
-            let bytes = [UInt8](data)
-            
-            // WebM/MKV: 1A 45 DF A3
-            if bytes.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
-                return "video/webm"
-            }
-            
-            // AVI: 52 49 46 46 (RIFF)
-            if bytes.starts(with: [0x52, 0x49, 0x46, 0x46]) {
-                return "video/avi"
-            }
-            
-            // WMV: 30 26 B2 75 (ASF)
-            if bytes.starts(with: [0x30, 0x26, 0xB2, 0x75]) {
-                return "video/x-ms-wmv"
-            }
-            
-            // MP4/MOV: 检查 offset 4-7 的 "ftyp"
-            let ftypBytes = bytes[4..<8]
-            if ftypBytes.elementsEqual([0x66, 0x74, 0x79, 0x70]) {
-                return "video/mp4"
-            }
-            
-            // 3GPP: 检查 offset 4-6 的 "3gp"
-            let threeGpBytes = bytes[4..<7]
-            if threeGpBytes.elementsEqual([0x33, 0x67, 0x70]) {
-                return "video/3gpp"
-            }
-            
-            return "video/mp4" // 默认
-        }
     }
 }

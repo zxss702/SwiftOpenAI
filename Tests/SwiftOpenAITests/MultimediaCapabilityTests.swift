@@ -75,7 +75,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("us.anthropic.claude-sonnet-5", true, false),
             ("opencode-go/kimi-k3", true, true),
             ("kimi-k2-6", true, true),
-            ("deepseek-v4-pro", true, false),
+            ("deepseek-v4-pro", false, false),
             ("minimax-m2.7", false, false),
             ("ox-alpha-free", true, true),
             ("sonar-pro", true, false),
@@ -105,20 +105,22 @@ final class MultimediaCapabilityTests: XCTestCase {
         }
     }
 
-    func testMiniMaxCompletionsHardGateEvenForM3() {
+    func testMiniMaxCompletionsSupportsM3Multimedia() {
         let cap = MultimediaCapabilityResolver.resolve(
             family: .minimax,
             wireAPI: .completions,
             model: "MiniMax-M3"
         )
-        XCTAssertEqual(cap, .none)
+        XCTAssertTrue(cap.supportsImage)
+        XCTAssertTrue(cap.supportsVideo)
 
         let onAggregator = MultimediaCapabilityResolver.resolve(
-            family: .genericOpenAICompatible,
+            family: .tokenDance,
             wireAPI: .completions,
-            model: "minimax-m3"
+            model: "minimax-m3.1-flash"
         )
-        XCTAssertEqual(onAggregator, .none)
+        XCTAssertTrue(onAggregator.supportsImage)
+        XCTAssertTrue(onAggregator.supportsVideo)
     }
 
     func testOpenCodeGoCatalog() {
@@ -143,7 +145,7 @@ final class MultimediaCapabilityTests: XCTestCase {
             ("qwen3.7-plus", true, true),
             ("qwen3.6-plus", true, true),
             ("qwen4-max-preview", true, true),
-            ("deepseek-v4-pro", true, false),
+            ("deepseek-v4-pro", false, false),
             ("deepseek-v4-flash", true, false),
             ("deepseek-v4-flash-vision-exp", true, false),
             ("hy3", false, false),
@@ -270,18 +272,18 @@ final class MultimediaCapabilityTests: XCTestCase {
         XCTAssertTrue(parts.contains { ($0["type"] as? String) == "image_url" })
     }
 
-    func testMiniMaxCompletionsStripsM3Images() async throws {
+    func testMiniMaxCompletionsRetainsM3Images() async throws {
         let prepared = try await createChatRequest(
             query: ChatQuery(
                 messages: [.user("img", imageDatas: TestFixtures.tinyPNG, detail: .high)],
-                model: "MiniMax-M3"
+                model: "minimax-m3.1-flash"
             ),
-            configuration: TestFixtures.configuration(baseURL: "https://api.minimaxi.com/v1")
+            configuration: TestFixtures.configuration(baseURL: "https://tokendance.space/gateway/v1")
         )
         let content = try XCTUnwrap(
-            ((try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? String)
+            ((try TestFixtures.requestBody(from: prepared.urlRequest)["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
         )
-        XCTAssertTrue(content.contains("image 不支持"))
+        XCTAssertTrue(content.contains { ($0["type"] as? String) == "image_url" })
     }
 
     func testAnthropicWireKeepsMiniMaxM3Images() throws {

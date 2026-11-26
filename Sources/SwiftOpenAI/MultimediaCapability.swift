@@ -17,17 +17,19 @@ enum MultimediaCapabilityResolver {
     ) -> MultimediaCapability {
         let id = normalizedModelID(model)
 
-        // MiniMax OpenAI 兼容 Completions：线路不接受 image_url（含聚合上误走 completions）
-        if wireAPI == .completions, isMiniMaxModel(id) {
-            return .none
-        }
-        if family == .minimax, wireAPI == .completions {
+        // MiniMax M2 and older are text-only. M3 supports both Chat and Messages.
+        if wireAPI == .completions, (family == .minimax || isMiniMaxModel(id)), !isMiniMaxM3(id) {
             return .none
         }
 
         var capability = discover(id)
 
-        // DeepSeek v4 代（v4-pro / v4.1-flash 等）支持图像；v3 及更早代纯文本；视频均不支持。
+        // TokenDance aliases for retired MiMo 2.5 models redirect to 2.6.
+        if family == .tokenDance, ["mimo-v2.5", "mimo-v2.5-pro"].contains(id) {
+            capability = MultimediaCapability(supportsImage: true, supportsVideo: true)
+        }
+
+        // DeepSeek documents image input on Flash, not on Pro. No video input.
         if family == .deepseek || id.contains("deepseek") {
             capability.supportsImage = isDeepSeekVisionModel(id)
             capability.supportsVideo = false
@@ -48,7 +50,8 @@ enum MultimediaCapabilityResolver {
             capability.supportsVideo = false
         }
 
-        // Anthropic Messages：仅 MiniMax-M3 有 video block；Claude 等关 video
+        // Anthropic Messages has no standard video block. MiniMax documents
+        // a provider extension for its M3 family.
         if wireAPI == .anthropic, !isMiniMaxM3(id) {
             capability.supportsVideo = false
         }
@@ -80,8 +83,9 @@ enum MultimediaCapabilityResolver {
         return id
     }
 
-    private static func isMiniMaxM3(_ id: String) -> Bool {
-        let compact = id.replacingOccurrences(of: "_", with: "-")
+    static func isMiniMaxM3(_ model: String) -> Bool {
+        let compact = normalizedModelID(model).replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
         return compact == "minimax-m3" || compact.hasPrefix("minimax-m3-")
     }
 
@@ -90,18 +94,11 @@ enum MultimediaCapabilityResolver {
         return compact.hasPrefix("minimax-m") || compact.hasPrefix("minimax_m")
     }
 
-    /// DeepSeek v4 代及未标明代际的新别名（deepseek-flash 等）支持图像；
-    /// v1~v3、r1、chat/reasoner/coder/distill 等旧代为纯文本。
     private static func isDeepSeekVisionModel(_ id: String) -> Bool {
         let compact = id.replacingOccurrences(of: ".", with: "-").replacingOccurrences(of: "_", with: "-")
-        return !compact.contains("v1")
-            && !compact.contains("v2")
-            && !compact.contains("v3")
-            && !compact.contains("r1")
-            && !compact.contains("chat")
-            && !compact.contains("reasoner")
-            && !compact.contains("coder")
-            && !compact.contains("distill")
+        return ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-1-flash"].contains {
+            compact == $0 || compact.hasPrefix($0 + "-")
+        }
     }
 
     private static func discover(_ id: String) -> MultimediaCapability {
@@ -179,6 +176,7 @@ enum MultimediaCapabilityResolver {
             || id.hasPrefix("claude-opus")
             || id.hasPrefix("claude-haiku")
             || id.hasPrefix("claude-fable")
+            || id.hasPrefix("claude-mythos")
         {
             image = true
         }
@@ -287,6 +285,14 @@ enum MultimediaCapabilityResolver {
         {
             image = true
             video = true
+        }
+
+        if compact == "glm-5-4" || compact.hasPrefix("glm-5-4-") {
+            image = true
+            video = true
+        }
+        if id == "hy4" || id.hasPrefix("hy4-flash") {
+            image = true
         }
 
         // Moonshot Kimi 视觉代（含 k2-6 横杠别名）

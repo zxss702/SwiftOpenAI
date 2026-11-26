@@ -390,11 +390,8 @@ enum ProviderRequestEncoder {
             body[key] = value.anyValue
         }
         applyProviderDefaults(into: &body, request: request, family: family)
-        applyThinking(
-            into: &body,
-            thinkLevel: request.thinkLevel,
-            family: family
-        )
+        let reasoning = ReasoningCapability.resolve(model: request.model, family: family, wireAPI: .completions)
+        reasoning.apply(to: &body, ratio: request.thinkLevel, wireAPI: .completions)
 
         return body
     }
@@ -422,11 +419,12 @@ enum ProviderRequestEncoder {
         ]
     }
 
-    private static func encodeVideoURLPart(url: String, fps: Double?, family: ProviderFamily) -> [String: Any] {
+    private static func encodeVideoURLPart(url: String, fps: Double?, family: ProviderFamily,
+                                           miniMaxMedia: Bool) -> [String: Any] {
         // fps 是 DashScope 特有扩展，且要求位于 part 顶层，与 video_url 平级；其他厂家一律不编码
         var part: [String: Any] = [
             "type": "video_url",
-            "video_url": ["url": url]
+            "video_url": ["url": miniMaxMedia ? VideoInputMIME.miniMaxURL(url) : url]
         ]
         if family == .dashscope, let fps {
             part["fps"] = fps
@@ -454,7 +452,8 @@ enum ProviderRequestEncoder {
     private static func encodeMessage(
         _ message: ChatQuery.ChatCompletionMessageParam,
         family: ProviderFamily,
-        capability: MultimediaCapability
+        capability: MultimediaCapability,
+        miniMaxMedia: Bool
     ) throws -> [String: Any] {
         switch message {
         case .system(let systemMessage):
@@ -472,7 +471,8 @@ enum ProviderRequestEncoder {
             encoded["content"] = encodeUserContent(
                 userMessage.content,
                 family: family,
-                capability: capability
+                capability: capability,
+                miniMaxMedia: miniMaxMedia
             )
             if let name = userMessage.name {
                 encoded["name"] = name
@@ -491,7 +491,7 @@ enum ProviderRequestEncoder {
                 encoded["tool_calls"] = try toolCalls.map { try jsonValue($0) }
             }
             if let reasoningContent = assistantMessage.reasoningContent {
-                switch family.assistantReasoningEncoding {
+                switch miniMaxMedia ? .reasoningContent : family.assistantReasoningEncoding {
                 case .reasoningContent:
                     encoded["reasoning_content"] = reasoningContent
                 case .reasoningDetails:
@@ -512,7 +512,8 @@ enum ProviderRequestEncoder {
             encoded["content"] = encodeToolContent(
                 toolMessage.content,
                 family: family,
-                capability: capability
+                capability: capability,
+                miniMaxMedia: miniMaxMedia
             )
             return encoded
 
@@ -540,7 +541,8 @@ enum ProviderRequestEncoder {
     private static func encodeUserContent(
         _ content: UserMessageParam.Content,
         family: ProviderFamily,
-        capability: MultimediaCapability
+        capability: MultimediaCapability,
+        miniMaxMedia: Bool
     ) -> Any {
         switch content {
         case .string(let string):
@@ -589,7 +591,8 @@ enum ProviderRequestEncoder {
                             encodeVideoURLPart(
                                 url: videoContent.videoUrl.url,
                                 fps: videoContent.videoUrl.fps,
-                                family: family
+                                family: family,
+                                miniMaxMedia: miniMaxMedia
                             )
                         )
                     } else {
@@ -611,7 +614,8 @@ enum ProviderRequestEncoder {
     private static func encodeToolContent(
         _ content: ToolMessageParam.Content,
         family: ProviderFamily,
-        capability: MultimediaCapability
+        capability: MultimediaCapability,
+        miniMaxMedia: Bool
     ) -> Any {
         switch content {
         case .textContent(let string):
@@ -660,7 +664,8 @@ enum ProviderRequestEncoder {
                             encodeVideoURLPart(
                                 url: videoContent.videoUrl.url,
                                 fps: videoContent.videoUrl.fps,
-                                family: family
+                                family: family,
+                                miniMaxMedia: miniMaxMedia
                             )
                         )
                     } else {
