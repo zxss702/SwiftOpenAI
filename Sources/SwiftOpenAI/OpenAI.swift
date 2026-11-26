@@ -178,7 +178,10 @@ nonisolated func createChatCompletionEnvelope(
         guard (200...299).contains(Int(response.status.code)) else {
             let responseBody = try await responseBodyString(from: response.body)
             let statusCode = Int(response.status.code)
-            throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+            throw mapModelHTTPError(
+                message: responseBody, code: statusCode,
+                requestID: ProviderResponseNormalizer.requestID(from: response.headers)
+            )
         }
 
         do {
@@ -209,7 +212,10 @@ nonisolated func createChatStreamEnvelopeStream(
                     guard (200...299).contains(Int(response.status.code)) else {
                         let responseBody = try await responseBodyString(from: response.body)
                         let statusCode = Int(response.status.code)
-                        throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                        throw mapModelHTTPError(
+                            message: responseBody, code: statusCode,
+                            requestID: ProviderResponseNormalizer.requestID(from: response.headers)
+                        )
                     }
 
                     let metadata = preparedRequest.metadata.withRequestID(
@@ -260,80 +266,19 @@ nonisolated func createChatStreamEnvelopeStream(
 }
 #else /* Windows */
 
-enum URLSessionStreamEvent: Sendable {
-    case response(HTTPURLResponse)
-    case data(Data)
-}
-
-/// URLSession 回调只转发原始事件，由单个异步消费者顺序解析。
-private final class URLSessionStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    private let continuation: AsyncThrowingStream<URLSessionStreamEvent, Error>.Continuation
-
-    init(continuation: AsyncThrowingStream<URLSessionStreamEvent, Error>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        dataTask: URLSessionDataTask,
-        didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
-    ) {
-        guard let response = response as? HTTPURLResponse else {
-            continuation.finish(throwing: OpenAIError.invalidResponse("Invalid URLResponse type", code: 0))
-            completionHandler(.cancel)
-            return
-        }
-        continuation.yield(.response(response))
-        completionHandler(.allow)
-    }
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        continuation.yield(.data(data))
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error {
-            continuation.finish(throwing: mapURLSessionTransportError(error))
-        } else {
-            continuation.finish()
-        }
-    }
-}
-
-/// 三种流式协议共用同一传输生命周期，终止消费时同步取消底层请求。
-nonisolated func makeURLSessionStream(
-    for request: URLRequest
-) -> (session: URLSession, stream: AsyncThrowingStream<URLSessionStreamEvent, Error>) {
-    let (stream, continuation) = AsyncThrowingStream<URLSessionStreamEvent, Error>.makeStream()
-    let delegate = URLSessionStreamDelegate(continuation: continuation)
-    let session = URLSession(configuration: openAIURLSessionConfiguration, delegate: delegate, delegateQueue: nil)
-    continuation.onTermination = { _ in
-        session.invalidateAndCancel()
-    }
-    session.dataTask(with: request).resume()
-    return (session, stream)
-}
-
 nonisolated func createChatCompletionEnvelope(
     query: ChatQuery,
     configuration: OpenAIConfiguration
 ) async throws -> ChatCompletionEnvelope {
     let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
     return try await withNetworkPathGuard {
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await openAIURLSession.data(for: preparedRequest.urlRequest)
-        } catch {
-            throw mapURLSessionTransportError(error)
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIError.invalidResponse("Invalid URLResponse type", code: 0)
-        }
+        let (data, httpResponse) = try await windowsHTTPData(for: preparedRequest.urlRequest)
         guard (200...299).contains(httpResponse.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? "Cannot parse response"
-            throw mapDeepSeekBodyLimitError(message: responseBody, code: httpResponse.statusCode)
+            throw mapModelHTTPError(
+                message: responseBody, code: httpResponse.statusCode,
+                requestID: ProviderResponseNormalizer.requestID(from: httpResponse)
+            )
         }
 
         do {
@@ -358,8 +303,8 @@ nonisolated func createChatStreamEnvelopeStream(
                 let preparedRequest = try await createChatRequest(query: query, configuration: configuration)
                 try Task.checkCancellation()
                 try await withNetworkPathGuard {
-                    let (session, stream) = makeURLSessionStream(for: preparedRequest.urlRequest)
-                    defer { session.invalidateAndCancel() }
+                    let (transfer, stream) = makeWindowsHTTPStream(for: preparedRequest.urlRequest)
+                    defer { transfer.cancel() }
 
                     try await withTaskCancellationHandler {
                         var streamState = ProviderStreamNormalizationState()
@@ -396,7 +341,9 @@ nonisolated func createChatStreamEnvelopeStream(
                         try Task.checkCancellation()
                         guard (200...299).contains(statusCode) else {
                             let responseBody = String(data: errorBody, encoding: .utf8) ?? "Cannot parse response"
-                            throw mapDeepSeekBodyLimitError(message: responseBody, code: statusCode)
+                            throw mapModelHTTPError(
+                                message: responseBody, code: statusCode, requestID: metadata.requestID
+                            )
                         }
                         try processSSEBytes(
                             Data(),
@@ -409,7 +356,7 @@ nonisolated func createChatStreamEnvelopeStream(
                             finalize: true
                         )
                     } onCancel: {
-                        session.invalidateAndCancel()
+                        transfer.cancel()
                     }
                     continuation.finish()
                 }

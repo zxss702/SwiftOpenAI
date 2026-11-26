@@ -101,9 +101,10 @@ private nonisolated func executeAnthropicStreamWithHTTPClient(
 
     guard (200...299).contains(Int(response.status.code)) else {
         let responseBody = try await anthropicBodyString(from: response.body)
-        throw mapDeepSeekBodyLimitError(
+        throw mapModelHTTPError(
             message: responseBody,
-            code: Int(response.status.code)
+            code: Int(response.status.code),
+            requestID: ProviderResponseNormalizer.requestID(from: response.headers)
         )
     }
 

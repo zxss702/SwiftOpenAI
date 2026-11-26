@@ -54,6 +54,28 @@ final class NetworkTransportConfigurationTests: XCTestCase {
         }
     }
 
+    func testMapURLSessionCancellationToSwiftCancellation() {
+        XCTAssertTrue(mapURLSessionTransportError(URLError(.cancelled)) is CancellationError)
+    }
+
+    func testGateway499PreservesStatusAndRequestID() {
+        let error = mapModelHTTPError(message: "Client Closed Request", code: 499, requestID: "test-499")
+        guard case .invalidResponse(let message, code: 499) = error else {
+            return XCTFail("应保留网关状态 499，实际 \(error)")
+        }
+        XCTAssertTrue(message.contains("网关报告请求已中断"))
+        XCTAssertTrue(message.contains("test-499"))
+        XCTAssertTrue(message.contains("Client Closed Request"))
+    }
+
+    func testGateway504HasAnExplanationWithAnEmptyResponseBody() {
+        let error = mapModelHTTPError(message: "", code: 504, requestID: nil)
+        guard case .invalidResponse(let message, code: 504) = error else {
+            return XCTFail("应保留网关状态 504，实际 \(error)")
+        }
+        XCTAssertEqual(message, "网关等待上游响应超时（HTTP 504）")
+    }
+
     func testMapURLSessionOtherErrorsPassThrough() {
         let urlError = URLError(.cannotConnectToHost)
         let mappedURL = mapURLSessionTransportError(urlError) as? URLError

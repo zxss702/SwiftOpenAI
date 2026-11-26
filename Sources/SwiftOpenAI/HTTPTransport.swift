@@ -55,12 +55,47 @@ nonisolated var openAIURLSessionConfiguration: URLSessionConfiguration {
 
 nonisolated let openAIURLSession = URLSession(configuration: openAIURLSessionConfiguration)
 
-/// 将 URLSession 空闲超时映射为可识别错误；其余错误原样透传。
-nonisolated func mapURLSessionTransportError(_ error: Error) -> Error {
-    if let urlError = error as? URLError, urlError.code == .timedOut {
-        return OpenAIError.connectionIdleTimeout
+nonisolated func openAIHTTPData(
+    for request: URLRequest, session: URLSession? = nil
+) async throws -> (Data, URLResponse) {
+    #if os(Windows)
+    if session == nil { return try await windowsHTTPData(for: request) }
+    #endif
+    do {
+        return try await (session ?? openAIURLSession).data(for: request)
+    } catch {
+        throw mapURLSessionTransportError(error)
     }
-    return error
+}
+
+/// 区分本地取消、空闲超时和其他传输错误。
+nonisolated func mapURLSessionTransportError(_ error: Error) -> Error {
+    guard let urlError = error as? URLError else { return error }
+    switch urlError.code {
+    case .cancelled:
+        return CancellationError()
+    case .timedOut:
+        return OpenAIError.connectionIdleTimeout
+    default:
+        return error
+    }
+}
+
+nonisolated func mapModelHTTPError(message: String, code: Int, requestID: String?) -> OpenAIError {
+    let explanation: String
+    switch code {
+    case 499: explanation = "网关报告请求已中断（HTTP 499）"
+    case 502: explanation = "网关收到无效的上游响应（HTTP 502）"
+    case 503: explanation = "服务暂不可用（HTTP 503）"
+    case 504: explanation = "网关等待上游响应超时（HTTP 504）"
+    default: return mapDeepSeekBodyLimitError(message: message, code: code)
+    }
+
+    let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    var parts = [explanation]
+    if let requestID, !requestID.isEmpty { parts.append("请求 ID: \(requestID)") }
+    if !detail.isEmpty { parts.append(detail) }
+    return .invalidResponse(parts.joined(separator: "。"), code: code)
 }
 
 #if !os(Windows)
